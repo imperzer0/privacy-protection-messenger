@@ -1,0 +1,15 @@
+[Unit]
+Description=linux-file-server server daemon
+After=network.target
+StartLimitIntervalSec=10
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/linux-file-server-server --new-style-daemon --config /etc/linux-file-server-server.conf
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+Alias=linux-file-server

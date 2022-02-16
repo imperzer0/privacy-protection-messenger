@@ -1,0 +1,5 @@
+# Clion Project exclude paths
+/cmake-build-*/
+/pkg/
+/src/
+/*.pkg.tar.zst
