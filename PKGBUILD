@@ -7,9 +7,9 @@ arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
 license=('GPL')
 depends=("openssl" "iptables-nft")
-makedepends=("cmake>=3.0" "messenger-comm>=1:0-0" "openssl")
+makedepends=("cmake>=3.0" "openssl")
 
-libfiles=("CMakeLists.txt" "main.cpp" "$pkgname.conf" "$pkgname.service")
+libfiles=("CMakeLists.txt" "main.cpp" "network.hpp" "$pkgname.conf" "$pkgname.service")
 
 for libfile in ${libfiles[@]}
 {

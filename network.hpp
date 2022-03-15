@@ -1,0 +1,2383 @@
+//
+// Created by imper on 2/14/22.
+//
+
+#ifndef PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
+# define PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
+
+# include <inet-comm>
+# include <xor-crypt>
+# include <deque>
+# include <sys/syslog.h>
+# include <md5.h>
+# include <sys/stat.h>
+
+# ifndef MESSENGER_NAME
+#  define MESSENGER_NAME "messenger"
+# endif
+
+# ifndef CERTIFICATE_PATH
+#  define CERTIFICATE_PATH "cert/certificate.pem"
+# endif
+
+# ifndef PRIVATE_KEY_PATH
+#  define PRIVATE_KEY_PATH "cert/key.pem"
+# endif
+
+# ifndef COUNTRY
+#  define COUNTRY "UA"
+# endif
+
+# ifndef ORGANIZATION
+#  define ORGANIZATION "imper"
+# endif
+
+# ifndef CERTIFICATE_NAME
+#  define CERTIFICATE_NAME "imper"
+# endif
+
+# ifndef MAX_LOGIN
+#  define MAX_LOGIN 63
+# endif
+
+# ifndef MAX_PASSWORD
+#  define MAX_PASSWORD 127
+# endif
+
+# ifndef MAX_DISPLAY_NAME
+#  define MAX_DISPLAY_NAME 127
+# endif
+
+# ifndef CONFIG_DIR
+#  define CONFIG_DIR "/etc/" MESSENGER_NAME
+# endif
+
+# ifndef DEFAULT_USERS_FILE
+#  define DEFAULT_USERS_FILE CONFIG_DIR "/users"
+# endif
+
+# ifndef DEFAULT_WORK_DIR
+#  define DEFAULT_WORK_DIR "/tmp/" MESSENGER_NAME
+# endif
+
+# ifndef PASSWD_HASH_TYPE
+#  define PASSWD_HASH_TYPE passwd_sha512
+# endif
+
+# ifndef DEFAULT_PORT
+#  define DEFAULT_PORT 14882
+# endif
+
+# ifndef DEFAULT_SERVER_ADDRESS
+#  define DEFAULT_SERVER_ADDRESS INADDR_ANY
+# endif
+
+# ifndef MAX_USER_ENTRIES_AMOUNT
+#  define MAX_USER_ENTRIES_AMOUNT 100ul
+# endif
+
+# define E_DERANGED "Server is deranged. This is a bug report it!"
+# define E_SUCCESS "Success."
+# define E_USER_ALREADY_EXISTS "This user already exists."
+# define E_INCORRECT_LOGIN "Incorrect login."
+# define E_INCORRECT_PASSWORD "Incorrect password."
+# define E_TOO_LONG_LOGIN "Too long login string."
+# define E_TOO_LONG_PASSWORD "Too long password string."
+# define E_TOO_SHORT_PASSWORD "Too short password."
+# define E_TOO_LONG_DISPLAY_NAME "Too long display name."
+# define E_USER_NOT_FOUND "User not found."
+# define E_MESSAGE_NOT_FOUND "Message not found."
+# define E_NO_PERMISSION "No permission."
+
+
+# undef LOG
+# undef ERR
+# define LOG (inetio::__detail__::_log_ << LOG_PREFIX)
+# define ERR (inetio::__detail__::_err_ << ERR_PREFIX)
+
+namespace msg
+{
+	static const char* users_file = DEFAULT_USERS_FILE;
+	static const char* work_dir = DEFAULT_WORK_DIR;
+	static bool verbose = false;
+	
+	namespace __detail__ __attribute__((visibility("hidden")))
+	{
+		static const unsigned char cov_2char[64] = {
+				/* from crypto/des/fcrypt.c */
+				0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
+				0x36, 0x37, 0x38, 0x39, 0x41, 0x42, 0x43, 0x44,
+				0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C,
+				0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54,
+				0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x61, 0x62,
+				0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A,
+				0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72,
+				0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A
+		};
+		
+		static const char ascii_dollar[] = {0x24, 0x00};
+		
+		typedef enum : int
+		{
+			passwd_unset = 0,
+			passwd_md5,
+			passwd_apr1,
+			passwd_sha256,
+			passwd_sha512,
+			passwd_aixmd5
+		} passwd_modes;
+		
+		inline static int random_bytes(char** data, size_t size);
+		
+		inline static char* md5crypt(const char* passwd, const char* magic, const char* salt);
+		
+		inline static char* shacrypt(const char* passwd, const char* magic, const char* salt);
+	}
+	
+	struct HEADER
+	{
+		enum signal : int
+		{
+			s_zero = 0,
+			s_register_user,
+			s_set_password,
+			s_set_display_name,
+			s_get_display_name,
+			s_begin_session,
+			s_end_session,
+			s_send_message,
+			s_send_message_password,
+			s_check_incoming,
+			s_delete_message,
+			s_check_online_status,
+			s_find_users_by_display_name,
+			s_find_users_by_login
+		};
+		signal sig = s_zero;
+		
+		size_t login_size = 0;
+		size_t password_size = 0;
+		size_t display_name_size = 0;
+		size_t data_size = 0;
+		
+		enum error : int
+		{
+			e_deranged = 0,
+			e_success,
+			e_user_already_exists,
+			e_incorrect_login,
+			e_incorrect_password,
+			e_too_long_login,
+			e_too_long_password,
+			e_too_short_password,
+			e_too_long_display_name,
+			e_user_not_found,
+			e_message_not_found,
+			e_no_permission
+		};
+		error err = e_deranged;
+	};
+	
+	struct MESSAGE
+	{
+		enum destination_type : int
+		{
+			dt_zero = 0,
+			dt_user,
+			dt_chat
+		};
+		destination_type dest_type = dt_zero;
+		
+		std::string* source = nullptr;
+		std::string* destination = nullptr;
+		std::string* data = nullptr;
+		
+		size_t source_size = 0;
+		size_t destination_size = 0;
+		size_t data_size = 0;
+		size_t message_no = -1ul;
+	};
+	
+	class client : public inetio::client
+	{
+	public:
+		inline explicit client(
+				const inetio::inet_address& server_address, SSL* ssl = nullptr, SSL_CTX* ctx = nullptr,
+				const std::string& cert_file = "", const std::string& key_file = "") : inetio::client(
+				server_address, true, ssl, ctx, cert_file, key_file
+		)
+		{ }
+		
+		template <bool do_fork = true>
+		inline static client* create_client(const inetio::inet_address& server_address)
+		{
+			bool generate_certs = true;
+			if constexpr(do_fork)
+			{
+				pid_t pid = ::fork();
+				if (pid < 0)
+				{
+					generate_certs = false;
+					ERROR("Fork failed.");
+				}
+				else if (pid > 0)
+					generate_certs = false;
+				else
+					generate_certs = true;
+			}
+			
+			if (generate_certs)
+			{
+				std::string error;
+				
+				::system((std::string("mkdir -p \"") + work_dir + "\"").c_str());
+				::chdir(work_dir);
+				
+				auto key = inetio::generate_key(error);
+				if (!key)
+				{
+					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				auto x509 = inetio::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+				if (!x509)
+				{
+					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				if (!inetio::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
+				{
+					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
+			}
+			
+			return new client(server_address, nullptr, nullptr, CERTIFICATE_PATH, PRIVATE_KEY_PATH);
+		}
+		
+		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
+		{
+			if (write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()}) &&
+				write(login) &&
+				write(password) &&
+				write(display_name))
+			{
+				HEADER res;
+				if (read(res))
+				{
+					switch (res.err)
+					{
+						case HEADER::e_success:
+						{
+							status = E_SUCCESS;
+							return true;
+						}
+						case HEADER::e_user_already_exists:
+						{
+							status = E_USER_ALREADY_EXISTS;
+							return false;
+						}
+						case HEADER::e_too_long_login:
+						{
+							status = E_TOO_LONG_LOGIN;
+							return false;
+						}
+						case HEADER::e_too_long_password:
+						{
+							status = E_TOO_LONG_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_short_password:
+						{
+							status = E_TOO_SHORT_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_long_display_name:
+						{
+							status = E_TOO_LONG_DISPLAY_NAME;
+							return false;
+						}
+						default:
+						{
+							ERR << E_DERANGED "\n" << ENDENTLN;
+							status = E_DERANGED;
+							return false;
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
+		{
+			if (write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()}) &&
+				write(login) &&
+				write(password) &&
+				write(new_password))
+			{
+				HEADER res;
+				if (read(res))
+				{
+					switch (res.err)
+					{
+						case HEADER::e_success:
+						{
+							status = E_SUCCESS;
+							return true;
+						}
+						case HEADER::e_incorrect_login:
+						{
+							status = E_INCORRECT_LOGIN;
+							return false;
+						}
+						case HEADER::e_incorrect_password:
+						{
+							status = E_INCORRECT_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_long_login:
+						{
+							status = E_TOO_LONG_LOGIN;
+							return false;
+						}
+						case HEADER::e_too_long_password:
+						{
+							status = E_TOO_LONG_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_short_password:
+						{
+							status = E_TOO_SHORT_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_long_display_name:
+						{
+							status = E_TOO_LONG_DISPLAY_NAME;
+							return false;
+						}
+						case HEADER::e_no_permission:
+						{
+							status = E_NO_PERMISSION;
+							return false;
+						}
+						default:
+						{
+							ERR << E_DERANGED "\n" << ENDENTLN;
+							status = E_DERANGED;
+							return false;
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool set_display_name(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
+		{
+			write(HEADER{HEADER::s_set_display_name, login.size(), password.size(), display_name.size()});
+			HEADER res;
+			if (read(res))
+			{
+				switch (res.err)
+				{
+					case HEADER::e_success:
+					{
+						status = E_SUCCESS;
+						return true;
+					}
+					case HEADER::e_incorrect_login:
+					{
+						status = E_INCORRECT_LOGIN;
+						return false;
+					}
+					case HEADER::e_incorrect_password:
+					{
+						status = E_INCORRECT_PASSWORD;
+						return false;
+					}
+					case HEADER::e_too_long_login:
+					{
+						status = E_TOO_LONG_LOGIN;
+						return false;
+					}
+					case HEADER::e_too_long_password:
+					{
+						status = E_TOO_LONG_PASSWORD;
+						return false;
+					}
+					case HEADER::e_too_short_password:
+					{
+						status = E_TOO_SHORT_PASSWORD;
+						return false;
+					}
+					case HEADER::e_too_long_display_name:
+					{
+						status = E_TOO_LONG_DISPLAY_NAME;
+						return false;
+					}
+					case HEADER::e_no_permission:
+					{
+						status = E_NO_PERMISSION;
+						return false;
+					}
+					default:
+					{
+						ERR << E_DERANGED "\n" << ENDENTLN;
+						status = E_DERANGED;
+						return false;
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool get_display_name(const std::string& login, const std::string& password, std::string& display_name, std::string& status)
+		{
+			if (write(HEADER{HEADER::s_get_display_name, login.size(), password.size()}) &&
+				write(login) &&
+				write(password))
+			{
+				HEADER res;
+				if (read(res))
+				{
+					switch (res.err)
+					{
+						case HEADER::e_success:
+						{
+							status = E_SUCCESS;
+							read(display_name);
+							return true;
+						}
+						case HEADER::e_incorrect_login:
+						{
+							status = E_INCORRECT_LOGIN;
+							return false;
+						}
+						case HEADER::e_incorrect_password:
+						{
+							status = E_INCORRECT_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_long_login:
+						{
+							status = E_TOO_LONG_LOGIN;
+							return false;
+						}
+						case HEADER::e_too_long_password:
+						{
+							status = E_TOO_LONG_DISPLAY_NAME;
+							return false;
+						}
+						case HEADER::e_too_short_password:
+						{
+							status = E_TOO_SHORT_PASSWORD;
+							return false;
+						}
+						default:
+						{
+							ERR << E_DERANGED "\n" << ENDENTLN;
+							status = E_DERANGED;
+							return false;
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool begin_session(const std::string& login, const std::string& password, std::string& status)
+		{
+			if (!is_connected) is_connected = connect();
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_begin_session, login.size(), password.size()}) &&
+					write(login) &&
+					write(password))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								return true;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool end_session(const std::string& login, const std::string& password, std::string& status)
+		{
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_end_session, login.size(), password.size()}) &&
+					write(login) &&
+					write(password))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								is_connected = false;
+								return true;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool send_message(
+				const std::string& login, const std::string& password, const MESSAGE& message, const std::string& message_password,
+				std::string& status)
+		{
+			if (is_connected)
+			{
+				size_t message_size = sizeof message;
+				if (message.destination) message_size += message.destination->size();
+				if (message.data) message_size += message.data->size();
+				
+				auto buf = xorcrypt::buffer();
+				buf.take(message.data->data(), message.data->size());
+				
+				auto buf_dest = new xorcrypt::buffer_destination(buf);
+				xorcrypt::xor_encrypt xe(message_password, *buf_dest);
+				
+				xe.write(message.data->c_str(), message.data->size());
+				
+				delete buf_dest;
+				
+				if (write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size}) &&
+					write(login) &&
+					write(password) &&
+					write(message))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								return true;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool check_incoming(
+				const std::string& login, const std::string& password, MESSAGE& message, const std::string& message_password, std::string& status)
+		{
+			if (is_connected)
+			{
+				size_t message_size = sizeof message;
+				if (message.destination) message_size += message.destination->size();
+				if (message.data) message_size += message.data->size();
+				
+				if (write(HEADER{HEADER::s_check_incoming, login.size(), password.size(), 0, message_size}) &&
+					write(login) &&
+					write(password))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								/// TODO: REWRITE ALL
+								read(message);
+								status = E_SUCCESS;
+								char* rsa_pub;
+								int pub_len;
+								if (read(pub_len) &&
+									read(rsa_pub, pub_len))
+								{
+									EVP_PKEY* pbkey = nullptr;
+									if (reconstruct_rsa_pub_key(pbkey, rsa_pub, pub_len) > 0)
+									{
+										RSA_private_decrypt()
+										return true;
+									}
+								}
+								return false;
+								/// TODO: REWRITE ALL
+							}
+							case HEADER::e_message_not_found:
+							{
+								status = E_MESSAGE_NOT_FOUND;
+								return false;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool delete_message(const std::string& login, const std::string& password, const MESSAGE& message, std::string& status)
+		{
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_delete_message, login.size(), password.size(), 0, sizeof message}) &&
+					write(login) &&
+					write(password) &&
+					write(message))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								return true;
+							}
+							case HEADER::e_message_not_found:
+							{
+								status = E_MESSAGE_NOT_FOUND;
+								return false;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool check_online_status(const std::string& login, const std::string& password, const std::string& another_user, std::string& status)
+		{
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()}) &&
+					write(login) &&
+					write(password) &&
+					write(another_user))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								return true;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							case HEADER::e_user_not_found:
+							{
+								status = E_USER_NOT_FOUND;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool find_users_by_display_name(
+				const std::string& login, const std::string& password, const std::string& display_name, std::list<std::string>& list,
+				std::string& status)
+		{
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()}) &&
+					write(login) &&
+					write(password) &&
+					write(display_name))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								size_t amount = 0;
+								if (read(amount) && amount > 0)
+								{
+									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
+									for (size_t i = 0; i < amount; ++i)
+									{
+										std::string entry;
+										if (!read(entry)) return false;
+										list.push_back(entry);
+									}
+									return true;
+								}
+								return false;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_display_name:
+							{
+								status = E_TOO_LONG_DISPLAY_NAME;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							case HEADER::e_user_not_found:
+							{
+								status = E_USER_NOT_FOUND;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool find_users_by_login(
+				const std::string& login, const std::string& password, const std::string& another_user, std::list<std::string>& list,
+				std::string& status)
+		{
+			if (is_connected)
+			{
+				if (write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()}) &&
+					write(login) &&
+					write(password) &&
+					write(another_user))
+				{
+					HEADER res;
+					if (read(res))
+					{
+						switch (res.err)
+						{
+							case HEADER::e_success:
+							{
+								status = E_SUCCESS;
+								size_t amount = 0;
+								if (read(amount) && amount > 0)
+								{
+									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
+									for (size_t i = 0; i < amount; ++i)
+									{
+										std::string entry;
+										if (!read(entry)) return false;
+										list.push_back(entry);
+									}
+									return true;
+								}
+								return false;
+							}
+							case HEADER::e_incorrect_login:
+							{
+								status = E_INCORRECT_LOGIN;
+								return false;
+							}
+							case HEADER::e_incorrect_password:
+							{
+								status = E_INCORRECT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_login:
+							{
+								status = E_TOO_LONG_LOGIN;
+								return false;
+							}
+							case HEADER::e_too_long_password:
+							{
+								status = E_TOO_LONG_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_short_password:
+							{
+								status = E_TOO_SHORT_PASSWORD;
+								return false;
+							}
+							case HEADER::e_too_long_display_name:
+							{
+								status = E_TOO_LONG_DISPLAY_NAME;
+								return false;
+							}
+							case HEADER::e_no_permission:
+							{
+								status = E_NO_PERMISSION;
+								return false;
+							}
+							case HEADER::e_user_not_found:
+							{
+								status = E_USER_NOT_FOUND;
+								return false;
+							}
+							default:
+							{
+								LOG << E_DERANGED "\n" << ENDENTLN;
+								status = E_DERANGED;
+								return false;
+							}
+						}
+					}
+				}
+			}
+			return false;
+		}
+		
+		inline bool read(HEADER& header)
+		{
+			return read(&header, sizeof header) == sizeof header;
+		}
+		
+		inline bool read(MESSAGE& message)
+		{
+			bool res = read(&message, sizeof message) == sizeof message;
+			if (res)
+			{
+				char* source = new char[message.source_size + 1]{ };
+				char* data = new char[message.data_size + 1]{ };
+				res = res &&
+					  read(source, message.source_size) == message.source_size &&
+					  read(data, message.data_size) == message.data_size;
+				message.source = new std::string(source);
+				message.data = new std::string(data);
+			}
+		}
+		
+		template <typename T>
+		inline bool read(T& obj)
+		{
+			return read(&obj, sizeof obj) == sizeof obj;
+		}
+
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "HidingNonVirtualFunction"
+		
+		inline bool read(void* data, size_t size, bool non_block = false)
+		{
+			bool res = inetio::client::read(data, size, non_block) == size;
+			return inetio::client::write(&res, sizeof res) && res;
+		}
+
+#pragma clang diagnostic pop
+		
+		
+		inline ssize_t read(std::string& str, bool non_block = false)
+		{
+			size_t size = 0;
+			if (inetio::client::read(&size, sizeof size, non_block) == sizeof size)
+			{
+				str.resize(size);
+				return read(str.data(), size, non_block);
+			}
+			return -1;
+		}
+		
+		template <typename T>
+		inline bool write(const T& fixed_size_obj)
+		{
+			return write(&fixed_size_obj, sizeof fixed_size_obj);
+		}
+		
+		inline bool write(MESSAGE message)
+		{
+			bool res = false;
+			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
+			{
+				message.destination_size = message.destination->size();
+				message.data_size = message.data->size();
+				if (write(&message, sizeof message) &&
+					write(message.destination->c_str(), sizeof message.destination->size()) &&
+					write(message.data->c_str(), sizeof message.data->size()))
+					return true;
+			}
+			return false;
+		}
+		
+		inline bool write(const std::string& str)
+		{
+			return write(str.c_str(), str.size());
+		}
+
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "HidingNonVirtualFunction"
+		
+		inline bool write(const void* data, size_t size)
+		{
+			bool res;
+			return inetio::client::write(data, size) &&
+				   inetio::client::read(&res, sizeof res) == sizeof res &&
+				   res;
+		}
+
+#pragma clang diagnostic pop
+		
+		int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
+		{
+			auto* pbkeybio = BIO_new_mem_buf((void*)pub_key, pub_len);
+			if (pbkeybio == nullptr)
+			{
+				return -1;
+			}
+			evp_pbkey = PEM_read_bio_PUBKEY(pbkeybio, &evp_pbkey, nullptr, nullptr);
+			if (evp_pbkey == nullptr)
+			{
+				char buffer[120];
+				ERR_error_string(ERR_get_error(), buffer);
+				ERR << ERR_COLOR << "Error reading public key: " << buffer << ENDENTLN;
+			}
+			
+			BIO_free(pbkeybio);
+			return 1;
+		}
+		
+		int reconstruct_rsa_pri_key(EVP_PKEY* evp_pbkey, EVP_PKEY* evp_pkey, char* pri_key)
+		{
+			auto* pkeybio = BIO_new_mem_buf((void*)pri_key, -1);
+			if (pkeybio == nullptr)
+			{
+				return -1;
+			}
+			evp_pkey = PEM_read_bio_PrivateKey(pkeybio, &evp_pkey, nullptr, nullptr);
+			if (evp_pbkey == nullptr)
+			{
+				char buffer[120];
+				ERR_error_string(ERR_get_error(), buffer);
+				ERR << ERR_COLOR << "Error reading private key: " << buffer << ENDENTLN;
+			}
+			
+			BIO_free(pkeybio);
+			return 1;
+		}
+		
+		bool generate_rsa_key(char*& pri_key, int& pri_len, char*& pub_key, int& pub_len)
+		{
+			int ret = 0;
+			RSA* r = nullptr;
+			BIGNUM* bne = nullptr;
+			BIO* bp_public = nullptr, * bp_private = nullptr;
+			int bits = 2048;
+			unsigned long e = RSA_F4;
+			
+			RSA* pb_rsa = nullptr;
+			RSA* p_rsa = nullptr;
+			EVP_PKEY* evp_pbkey = nullptr;
+			EVP_PKEY* evp_pkey = nullptr;
+			
+			BIO* pbkeybio = nullptr;
+			BIO* pkeybio = nullptr;
+			
+			// 1. generate rsa key
+			bne = BN_new();
+			ret = BN_set_word(bne, e);
+			if (ret != 1)
+			{
+				goto free_all;
+			}
+			
+			r = RSA_new();
+			ret = RSA_generate_key_ex(r, bits, bne, nullptr);
+			if (ret != 1)
+			{
+				goto free_all;
+			}
+			
+			// 2. save public key
+			//bp_public = BIO_new_file("public.pem", "w+");
+			bp_public = BIO_new(BIO_s_mem());
+			ret = PEM_write_bio_RSAPublicKey(bp_public, r);
+			if (ret != 1)
+			{
+				goto free_all;
+			}
+			
+			// 3. save private key
+			//bp_private = BIO_new_file("private.pem", "w+");
+			bp_private = BIO_new(BIO_s_mem());
+			ret = PEM_write_bio_RSAPrivateKey(bp_private, r, nullptr, nullptr, 0, nullptr, nullptr);
+			
+			//4. Get the keys are PEM formatted strings
+			pri_len = BIO_pending(bp_private);
+			pub_len = BIO_pending(bp_public);
+			
+			pri_key = (char*)malloc(pri_len + 1);
+			pub_key = (char*)malloc(pub_len + 1);
+			
+			BIO_read(bp_private, pri_key, pri_len);
+			BIO_read(bp_public, pub_key, pub_len);
+			
+			pri_key[pri_len] = '\0';
+			pub_key[pub_len] = '\0';
+			
+			printf("\n%s\n%s\n", pri_key, pub_key);
+			
+			//verify if you are able to re-construct the keys
+			
+			ret = reconstruct_rsa_pub_key(evp_pbkey, pub_key, pub_len);
+			if (ret != 1)
+			{
+				goto free_all;
+			}
+			
+			ret = reconstruct_rsa_pri_key(evp_pbkey, evp_pkey, pri_key);
+			if (ret != 1)
+			{
+				goto free_all;
+			}
+			
+			// 4. free
+free_all:
+			
+			BIO_free_all(bp_public);
+			BIO_free_all(bp_private);
+			RSA_free(r);
+			BN_free(bne);
+			
+			return (ret == 1);
+		}
+	
+	
+	private:
+		bool is_connected = false;
+	};
+	
+	class server_io : public inetio::inet_io
+	{
+	public:
+		server_io(SSL* ssl) : inetio::inet_io(ssl)
+		{ }
+		
+		inline bool read(HEADER& header)
+		{
+			return read(&header, sizeof header) == sizeof header;
+		}
+		
+		inline bool read(MESSAGE& message)
+		{
+			bool res = read(&message, sizeof message) == sizeof message;
+			if (res)
+			{
+				char* source = new char[message.destination_size + 1]{ };
+				char* data = new char[message.data_size + 1]{ };
+				res = res && read(source, message.destination_size) &&
+					  read(data, message.data_size);
+				message.destination = new std::string(source);
+				message.data = new std::string(data);
+			}
+		}
+
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "HidingNonVirtualFunction"
+		
+		inline bool read(void* data, size_t size, bool non_block = false)
+		{
+			if (size > 0)
+			{
+				return inetio::inet_io::read(data, size, non_block) == size;
+			}
+			else return false;
+		}
+
+#pragma clang diagnostic pop
+		
+		
+		inline bool read_status(bool status)
+		{
+			return write(&status, sizeof status);
+		}
+		
+		inline bool write(const HEADER& header)
+		{
+			return write(&header, sizeof header);
+		}
+		
+		inline bool write(MESSAGE message)
+		{
+			bool res = false;
+			if (message.source && !message.source->empty() && message.data && !message.data->empty())
+			{
+				message.source_size = message.source->size();
+				message.data_size = message.data->size();
+				res = write(&message, sizeof message) &&
+					  write(message.source->c_str(), sizeof message.source->size()) &&
+					  write(message.data->c_str(), sizeof message.data->size());
+			}
+			return res;
+		}
+		
+		inline bool write(const std::string& str)
+		{
+			bool res = write(new size_t(str.size()), sizeof(size_t));
+			if (!str.empty()) res = res && write(str.c_str(), str.size());
+			return res;
+		}
+
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "HidingNonVirtualFunction"
+		
+		inline bool write(const void* data, size_t size)
+		{
+			return inetio::inet_io::write(data, size) == size;
+		}
+
+#pragma clang diagnostic pop
+		
+		inline bool write_report()
+		{
+			bool res = false;
+			if (read(&res, sizeof res)) return res;
+			else return false;
+		}
+	};
+	
+	class server : private inetio::server
+	{
+	public:
+		inline server(int max_clients, const inetio::inet_address& address)
+				: inetio::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
+		{ }
+		
+		template <bool do_fork = true>
+		inline static server* create_server(int max_clients, const inetio::inet_address& address)
+		{
+			bool generate_certs = true;
+			if constexpr(do_fork)
+			{
+				pid_t pid = ::fork();
+				if (pid < 0)
+				{
+					generate_certs = false;
+					ERROR("Fork failed.");
+				}
+				else if (pid > 0)
+					generate_certs = false;
+				else
+					generate_certs = true;
+			}
+			
+			if (generate_certs)
+			{
+				std::string error;
+				
+				auto key = inetio::generate_key(error);
+				if (!key)
+				{
+					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				auto x509 = inetio::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+				if (!x509)
+				{
+					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				if (!inetio::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
+				{
+					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
+					return nullptr;
+				}
+				
+				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
+			}
+			
+			load_users();
+			
+			return new server(max_clients, address);
+		}
+		
+		inline bool run()
+		{
+			return inetio::server::run(true);
+		}
+	
+	private:
+		struct USER_DATA
+		{
+			std::string password;
+			std::string display_name;
+			bool is_session_running = false;
+		};
+		
+		static std::map<std::string, USER_DATA> users;
+		
+		inline static bool check_credentials(HEADER& response, const char* login, const char* password, decltype(users.end())& user)
+		{
+			user = users.find(login);
+			if (user != users.end())
+			{
+				if (user->second.password == password)
+				{
+					return true;
+				}
+				else
+				{
+					response.err = HEADER::e_incorrect_password;
+				}
+			}
+			else
+			{
+				response.err = HEADER::e_incorrect_login;
+			}
+			return false;
+		}
+		
+		inline static bool process_request(server_io& io, const inetio::inet_address& address, server* serv)
+		{
+			HEADER header;
+			io.read(header);
+			
+			HEADER response{header.sig};
+			char* login, * password;
+			if (read_credentials(io, header, response, &login, &password))
+			{
+				switch (header.sig)
+				{
+					case HEADER::s_zero:
+						return false;
+					case HEADER::s_register_user:
+					{
+						char* display_name;
+						if (read_display_name(io, header, response, &display_name))
+						{
+							auto login_str = std::string(login);
+							if (users.find(login_str) == users.end())
+							{
+								::syslog(LOG_DEBUG, "Registering user \"%s\"...", login);
+								users[login_str] = {std::string(password), std::string(display_name)};
+								save_users();
+								response.err = HEADER::e_success;
+							}
+							else
+							{
+								::syslog(LOG_DEBUG, "User \"%s\" already exists.", login);
+								response.err = HEADER::e_user_already_exists;
+							}
+						}
+						break;
+					}
+					case HEADER::s_set_password:
+					{
+						char* data;
+						if (read_data(io, header, &data))
+						{
+							if (compute_passwd_hash(&data))
+							{
+								decltype(users.end()) user;
+								if (check_credentials(response, login, password, user))
+								{
+									user->second.password = data;
+									response.err = HEADER::e_success;
+								}
+							}
+							else
+							{
+								response.err = HEADER::e_deranged;
+							}
+						}
+						break;
+					}
+					case HEADER::s_set_display_name:
+					{
+						char* data;
+						if (read_data(io, header, &data))
+						{
+							decltype(users.end()) user;
+							if (check_credentials(response, login, password, user))
+							{
+								auto new_display_name = std::string(data);
+								if (new_display_name.size() > MAX_DISPLAY_NAME)
+									new_display_name.resize(MAX_DISPLAY_NAME);
+								user->second.display_name = new_display_name;
+								response.err = HEADER::e_success;
+							}
+						}
+						break;
+					}
+					case HEADER::s_get_display_name:
+					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							io.write(user->second.display_name);
+							io.write_report();
+							response.err = HEADER::e_success;
+						}
+						break;
+					}
+					case HEADER::s_begin_session:
+					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							user->second.is_session_running = true;
+							response.err = HEADER::e_success;
+						}
+						break;
+					}
+					case HEADER::s_end_session:
+					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							user->second.is_session_running = false;
+							response.err = HEADER::e_success;
+						}
+						break;
+					}
+					case HEADER::s_send_message:
+					{
+						break;
+					}
+					case HEADER::s_check_incoming:
+					{
+						break;
+					}
+					case HEADER::s_delete_message:
+					{
+						break;
+					}
+					case HEADER::s_check_online_status:
+					{
+						break;
+					}
+					case HEADER::s_find_users_by_display_name:
+					{
+						break;
+					}
+					case HEADER::s_find_users_by_login:
+					{
+						break;
+					}
+					default:
+					{
+						::syslog(LOG_DEBUG, "Received unknown signal = SIG(%d). Ignoring...", header.sig);
+						return false;
+					}
+				}
+			}
+			io.write(response);
+			return io.write_report();
+		}
+		
+		inline static bool send_message(decltype(users.end())& from_user, const MESSAGE& message)
+		{
+			switch (message.dest_type)
+			{
+				case MESSAGE::dt_user:
+				{
+					
+					return false;
+				}
+				case MESSAGE::dt_chat:
+				{
+					return false;
+				}
+				default:
+				{
+					::syslog(LOG_ERR, "MESSAGE::dest_type = %d is invalid!", message.dest_type);
+					return false;
+				}
+			}
+		}
+		
+		inline static bool assert_credentials(server_io& io, const HEADER& header, HEADER& response)
+		{
+			if (header.login_size > MAX_LOGIN)
+			{
+				io.read_status(false);
+				::syslog(LOG_ERR, "HEADER::login_size = %zu and is too long.", header.login_size);
+				response.err = HEADER::e_too_short_password;
+				return true;
+			}
+			
+			if (header.password_size > MAX_PASSWORD)
+			{
+				io.read_status(false);
+				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too long.", header.password_size);
+				response.err = HEADER::e_too_long_password;
+				return true;
+			}
+			
+			if (header.password_size < 8)
+			{
+				io.read_status(false);
+				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too short.", header.password_size);
+				response.err = HEADER::e_too_short_password;
+				return true;
+			}
+			
+			return false;
+		}
+		
+		inline static bool compute_passwd_hash(char** password)
+		{
+			char* salt = nullptr;
+			char* hash = nullptr;
+			if (hash_passwd(&salt, &hash, *password, __detail__::PASSWD_HASH_TYPE))
+			{
+				delete[] *password;
+				*password = hash;
+				delete[] salt;
+				return true;
+			}
+			else ::syslog(LOG_ERR, "Failed to compute password hash.");
+			return false;
+		}
+		
+		inline static bool read_credentials(server_io& io, const HEADER& header, HEADER& response, char** login, char** password)
+		{
+			if (assert_credentials(io, header, response))
+				return false;
+			
+			*login = new char[header.login_size + 1];
+			if (header.login_size)
+				io.read(*login, header.login_size);
+			(*login)[header.login_size] = 0;
+			io.read_status(true);
+			
+			*password = new char[header.password_size + 1];
+			if (header.password_size)
+				io.read(*password, header.password_size);
+			(*password)[header.password_size] = 0;
+			io.read_status(true);
+			
+			compute_passwd_hash(password);
+			
+			return true;
+		}
+		
+		inline static bool assert_display_name(server_io& io, const HEADER& header, HEADER& response)
+		{
+			if (header.display_name_size > MAX_DISPLAY_NAME)
+			{
+				io.read_status(false);
+				::syslog(LOG_ERR, "HEADER::display_name_size = %zu and is too long.", header.display_name_size);
+				response.err = HEADER::e_too_long_display_name;
+				return true;
+			}
+			
+			return false;
+		}
+		
+		inline static bool read_display_name(server_io& io, const HEADER& header, HEADER& response, char** display_name)
+		{
+			if (assert_display_name(io, header, response))
+				return false;
+			
+			*display_name = new char[header.display_name_size + 1];
+			if (header.display_name_size)
+				io.read(*display_name, header.display_name_size);
+			(*display_name)[header.display_name_size] = 0;
+			io.read_status(true);
+			
+			return true;
+		}
+		
+		inline static bool read_data(server_io& io, const HEADER& header, char** data)
+		{
+			*data = new char[header.data_size + 1];
+			if (header.data_size)
+				io.read(*data, header.data_size);
+			(*data)[header.data_size] = 0;
+			io.read_status(true);
+			
+			return true;
+		}
+		
+		inline static void load_users()
+		{
+			auto file = ::fopen(users_file, "rb");
+			if (file)
+			{
+				while (!::feof(file))
+				{
+					auto* username = new char[MAX_LOGIN + 1]{ };
+					auto* sha512password = new char[MAX_PASSWORD]{ };
+					::fscanf(file, "%s : %s : \"", username, sha512password);
+					std::string display_name;
+					char c = 0;
+					while (!::feof(file))
+					{
+						::fread(&c, sizeof c, 1, file);
+						if (c == '\"') break;
+						display_name += c;
+					}
+					::fscanf(file, "\n");
+					users[username] = {sha512password, display_name};
+					delete[] username;
+					delete[] sha512password;
+				}
+				::fclose(file);
+			}
+		}
+		
+		inline static void save_users()
+		{
+			struct stat st;
+			int res;
+			if (!(res = ::stat(CONFIG_DIR, &st)) && st.st_mode != S_IFDIR) ::system("rm -f \"" CONFIG_DIR "\"");
+			if (res < 0) ::system("mkdir -p \"" CONFIG_DIR "\"");
+			auto file = ::fopen(users_file, "wb");
+			if (file)
+			{
+				for (auto&& user: users)
+				{
+					::fprintf(file, "%s : %s : %s\n", user.first.c_str(), user.second.password.c_str(), user.second.display_name.c_str());
+				}
+				::fclose(file);
+			}
+		}
+		
+		inline static bool client_processing(int socket, SSL* ssl, const inetio::inet_address& address, inetio::server* serv)
+		{
+			auto* this_ptr = static_cast<server*>(serv->extra);
+			server_io io(ssl);
+			while (process_request(io, address, this_ptr));
+			return true;
+		}
+		
+		inline static bool hash_passwd(char** salt_p, char** hash, char* passwd, __detail__::passwd_modes mode)
+		{
+			*hash = nullptr;
+			
+			if (salt_p == nullptr)
+			{
+				if (verbose) ::syslog(LOG_ERR, "Server projected incorrectly: salt_p == nullptr.");
+				return false;
+			}
+			
+			/* first make sure we have a salt */
+			if (*salt_p == nullptr)
+			{
+				size_t saltlen = 0;
+				size_t i;
+				
+				if (mode == __detail__::passwd_md5 || mode == __detail__::passwd_apr1 || mode == __detail__::passwd_aixmd5)
+					saltlen = 8;
+				
+				if (mode == __detail__::passwd_sha256 || mode == __detail__::passwd_sha512)
+					saltlen = 16;
+				
+				assert(saltlen != 0);
+				
+				if (__detail__::random_bytes(salt_p, saltlen) <= 0)
+					return false;
+				
+				for (i = 0; i < saltlen; i++)
+				{
+					(*salt_p)[i] = __detail__::cov_2char[(*salt_p)[i] & 0x3f]; /* 6 bits */
+				}
+				(*salt_p)[i] = 0;
+# ifdef CHARSET_EBCDIC
+				/* The password encryption function will convert back to ASCII */
+				ascii2ebcdic(*salt_p, *salt_p, saltlen);
+# endif
+			}
+			
+			assert(*salt_p != nullptr);
+			if (strlen(passwd) > MAX_PASSWORD)
+			{
+				if (verbose) ::syslog(LOG_WARNING, "Truncating password to %d characters.", MAX_PASSWORD);
+				passwd[MAX_PASSWORD] = 0;
+			}
+			
+			/* now compute password hash */
+			
+			if (mode == __detail__::passwd_md5 || mode == __detail__::passwd_apr1)
+			{
+				if (verbose) ::syslog(LOG_DEBUG, "Computing MD5 hash...");
+				*hash = __detail__::md5crypt(passwd, (mode == __detail__::passwd_md5 ? "1" : "apr1"), *salt_p);
+			}
+			
+			if (mode == __detail__::passwd_aixmd5)
+			{
+				if (verbose) ::syslog(LOG_DEBUG, "Computing MD5 hash...");
+				*hash = __detail__::md5crypt(passwd, "", *salt_p);
+			}
+			
+			if (mode == __detail__::passwd_sha256 || mode == __detail__::passwd_sha512)
+			{
+				if (verbose) ::syslog(LOG_DEBUG, "Computing SHA hash...");
+				*hash = __detail__::shacrypt(passwd, (mode == __detail__::passwd_sha256 ? "5" : "6"), *salt_p);
+			}
+			
+			return hash != nullptr;
+		}
+	};
+	
+	namespace __detail__ __attribute__((visibility("hidden")))
+	{
+		inline static int random_bytes(char** data, size_t size)
+		{
+			if (size)
+			{
+				*data = new char[size];
+				::srandom(::time(nullptr));
+				for (size_t i = 0; i < size; ++i)
+				{
+					(*data)[i] = ::random();
+				}
+				return size;
+			}
+			return -1;
+		}
+
+
+/*
+ * MD5-based password algorithm (should probably be available as a library
+ * function; then the static buffer would not be acceptable). For magic
+ * string "1", this should be compatible to the MD5-based BSD password
+ * algorithm. For 'magic' string "apr1", this is compatible to the MD5-based
+ * Apache password algorithm. (Apparently, the Apache password algorithm is
+ * identical except that the 'magic' string was changed -- the laziest
+ * application of the NIH principle I've ever encountered.)
+ */
+		inline static char* md5crypt(const char* passwd, const char* magic, const char* salt)
+		{
+			/* "$apr1$..salt..$.......md5hash..........\0" */
+			static char out_buf[6 + 9 + 24 + 2];
+			unsigned char buf[MD5_DIGEST_LENGTH];
+			char ascii_magic[5];         /* "apr1" plus '\0' */
+			char ascii_salt[9];          /* Max 8 chars plus '\0' */
+			char* ascii_passwd = nullptr;
+			char* salt_out;
+			int n;
+			unsigned int i;
+			EVP_MD_CTX* md = nullptr, * md2 = nullptr;
+			size_t passwd_len, salt_len, magic_len;
+			
+			passwd_len = strlen(passwd);
+			
+			out_buf[0] = 0;
+			magic_len = strlen(magic);
+			OPENSSL_strlcpy(ascii_magic, magic, sizeof(ascii_magic));
+#ifdef CHARSET_EBCDIC
+			if ((magic[0] & 0x80) != 0)    /* High bit is 1 in EBCDIC alnums */
+		ebcdic2ascii(ascii_magic, ascii_magic, magic_len);
+#endif
+			
+			/* The salt gets truncated to 8 chars */
+			OPENSSL_strlcpy(ascii_salt, salt, sizeof(ascii_salt));
+			salt_len = strlen(ascii_salt);
+#ifdef CHARSET_EBCDIC
+			ebcdic2ascii(ascii_salt, ascii_salt, salt_len);
+#endif
+
+#ifdef CHARSET_EBCDIC
+			ascii_passwd = OPENSSL_strdup(passwd);
+	if (ascii_passwd == nullptr)
+		return nullptr;
+	ebcdic2ascii(ascii_passwd, ascii_passwd, passwd_len);
+	passwd = ascii_passwd;
+#endif
+			
+			if (magic_len > 0)
+			{
+				OPENSSL_strlcat(out_buf, ascii_dollar, sizeof(out_buf));
+				
+				if (magic_len > 4)    /* assert it's  "1" or "apr1" */
+					goto err;
+				
+				OPENSSL_strlcat(out_buf, ascii_magic, sizeof(out_buf));
+				OPENSSL_strlcat(out_buf, ascii_dollar, sizeof(out_buf));
+			}
+			
+			OPENSSL_strlcat(out_buf, ascii_salt, sizeof(out_buf));
+			
+			if (strlen(out_buf) > 6 + 8) /* assert "$apr1$..salt.." */
+				goto err;
+			
+			salt_out = out_buf;
+			if (magic_len > 0)
+				salt_out += 2 + magic_len;
+			
+			if (salt_len > 8)
+				goto err;
+			
+			md = EVP_MD_CTX_new();
+			if (md == nullptr
+				|| !EVP_DigestInit_ex(md, EVP_md5(), nullptr)
+				|| !EVP_DigestUpdate(md, passwd, passwd_len))
+				goto err;
+			
+			if (magic_len > 0)
+				if (!EVP_DigestUpdate(md, ascii_dollar, 1)
+					|| !EVP_DigestUpdate(md, ascii_magic, magic_len)
+					|| !EVP_DigestUpdate(md, ascii_dollar, 1))
+					goto err;
+			
+			if (!EVP_DigestUpdate(md, ascii_salt, salt_len))
+				goto err;
+			
+			md2 = EVP_MD_CTX_new();
+			if (md2 == nullptr
+				|| !EVP_DigestInit_ex(md2, EVP_md5(), nullptr)
+				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
+				|| !EVP_DigestUpdate(md2, ascii_salt, salt_len)
+				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
+				|| !EVP_DigestFinal_ex(md2, buf, nullptr))
+				goto err;
+			
+			for (i = passwd_len; i > sizeof(buf); i -= sizeof(buf))
+			{
+				if (!EVP_DigestUpdate(md, buf, sizeof(buf)))
+					goto err;
+			}
+			if (!EVP_DigestUpdate(md, buf, i))
+				goto err;
+			
+			n = passwd_len;
+			while (n)
+			{
+				if (!EVP_DigestUpdate(md, (n & 1) ? "\0" : passwd, 1))
+					goto err;
+				n >>= 1;
+			}
+			if (!EVP_DigestFinal_ex(md, buf, nullptr))
+				goto err;
+			
+			for (i = 0; i < 1000; i++)
+			{
+				if (!EVP_DigestInit_ex(md2, EVP_md5(), nullptr))
+					goto err;
+				if (!EVP_DigestUpdate(
+						md2,
+						(i & 1) ? (const unsigned char*)passwd : buf,
+						(i & 1) ? passwd_len : sizeof(buf)))
+					goto err;
+				if (i % 3)
+				{
+					if (!EVP_DigestUpdate(md2, ascii_salt, salt_len))
+						goto err;
+				}
+				if (i % 7)
+				{
+					if (!EVP_DigestUpdate(md2, passwd, passwd_len))
+						goto err;
+				}
+				if (!EVP_DigestUpdate(
+						md2,
+						(i & 1) ? buf : (const unsigned char*)passwd,
+						(i & 1) ? sizeof(buf) : passwd_len
+				))
+					goto err;
+				if (!EVP_DigestFinal_ex(md2, buf, nullptr))
+					goto err;
+			}
+			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md);
+			md2 = nullptr;
+			md = nullptr;
+			
+			{
+				/* transform buf into output string */
+				unsigned char buf_perm[sizeof(buf)];
+				int dest, source;
+				char* output;
+				
+				/* silly output permutation */
+				for (dest = 0, source = 0; dest < 14;
+					 dest++, source = (source + 6) % 17)
+					buf_perm[dest] = buf[source];
+				buf_perm[14] = buf[5];
+				buf_perm[15] = buf[11];
+# ifndef PEDANTIC              /* Unfortunately, this generates a "no
+                                 * effect" warning */
+				assert(16 == sizeof(buf_perm));
+# endif
+				
+				output = salt_out + salt_len;
+				assert(output == out_buf + strlen(out_buf));
+				
+				*output++ = ascii_dollar[0];
+				
+				for (i = 0; i < 15; i += 3)
+				{
+					*output++ = cov_2char[buf_perm[i + 2] & 0x3f];
+					*output++ = cov_2char[((buf_perm[i + 1] & 0xf) << 2) |
+										  (buf_perm[i + 2] >> 6)];
+					*output++ = cov_2char[((buf_perm[i] & 3) << 4) |
+										  (buf_perm[i + 1] >> 4)];
+					*output++ = cov_2char[buf_perm[i] >> 2];
+				}
+				assert(i == 15);
+				*output++ = cov_2char[buf_perm[i] & 0x3f];
+				*output++ = cov_2char[buf_perm[i] >> 6];
+				*output = 0;
+				assert(strlen(out_buf) < sizeof(out_buf));
+#ifdef CHARSET_EBCDIC
+				ascii2ebcdic(out_buf, out_buf, strlen(out_buf));
+#endif
+			}
+			
+			return out_buf;
+
+err:
+			OPENSSL_free(ascii_passwd);
+			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md);
+			return nullptr;
+		}
+
+/*
+ * SHA based password algorithm, describe by Ulrich Drepper here:
+ * https://www.akkadia.org/drepper/SHA-crypt.txt
+ * (note that it's in the public domain)
+ */
+		inline static char* shacrypt(const char* passwd, const char* magic, const char* salt)
+		{
+			/* Prefix for optional rounds specification.  */
+			static const char rounds_prefix[] = "rounds=";
+			/* Maximum salt string length.  */
+# define SALT_LEN_MAX 16
+			/* Default number of rounds if not explicitly specified.  */
+# define ROUNDS_DEFAULT 5000
+			/* Minimum number of rounds.  */
+# define ROUNDS_MIN 1000
+			/* Maximum number of rounds.  */
+# define ROUNDS_MAX 999999999
+			
+			/* "$6$rounds=<N>$......salt......$...shahash(up to 86 chars)...\0" */
+			static char out_buf[3 + 17 + 17 + 86 + 1];
+			unsigned char buf[SHA512_DIGEST_LENGTH];
+			unsigned char temp_buf[SHA512_DIGEST_LENGTH];
+			size_t buf_size = 0;
+			char ascii_magic[2];
+			char ascii_salt[17];          /* Max 16 chars plus '\0' */
+			char* ascii_passwd = nullptr;
+			size_t n;
+			EVP_MD_CTX* md = nullptr, * md2 = nullptr;
+			const EVP_MD* sha = nullptr;
+			size_t passwd_len, salt_len, magic_len;
+			unsigned int rounds = ROUNDS_DEFAULT;        /* Default */
+			char rounds_custom = 0;
+			char* p_bytes = nullptr;
+			char* s_bytes = nullptr;
+			char* cp = nullptr;
+			
+			passwd_len = strlen(passwd);
+			magic_len = strlen(magic);
+			
+			/* assert it's "5" or "6" */
+			if (magic_len != 1)
+				return nullptr;
+			
+			switch (magic[0])
+			{
+				case '5':
+					sha = EVP_sha256();
+					buf_size = 32;
+					break;
+				case '6':
+					sha = EVP_sha512();
+					buf_size = 64;
+					break;
+				default:
+					return nullptr;
+			}
+			
+			if (strncmp(salt, rounds_prefix, sizeof(rounds_prefix) - 1) == 0)
+			{
+				const char* num = salt + sizeof(rounds_prefix) - 1;
+				char* endp;
+				unsigned long int srounds = strtoul(num, &endp, 10);
+				if (*endp == '$')
+				{
+					salt = endp + 1;
+					if (srounds > ROUNDS_MAX)
+						rounds = ROUNDS_MAX;
+					else if (srounds < ROUNDS_MIN)
+						rounds = ROUNDS_MIN;
+					else
+						rounds = (unsigned int)srounds;
+					rounds_custom = 1;
+				}
+				else
+				{
+					return nullptr;
+				}
+			}
+			
+			OPENSSL_strlcpy(ascii_magic, magic, sizeof(ascii_magic));
+#ifdef CHARSET_EBCDIC
+			if ((magic[0] & 0x80) != 0)    /* High bit is 1 in EBCDIC alnums */
+		ebcdic2ascii(ascii_magic, ascii_magic, magic_len);
+#endif
+			
+			/* The salt gets truncated to 16 chars */
+			OPENSSL_strlcpy(ascii_salt, salt, sizeof(ascii_salt));
+			salt_len = strlen(ascii_salt);
+#ifdef CHARSET_EBCDIC
+			ebcdic2ascii(ascii_salt, ascii_salt, salt_len);
+#endif
+
+#ifdef CHARSET_EBCDIC
+			ascii_passwd = OPENSSL_strdup(passwd);
+	if (ascii_passwd == nullptr)
+		return nullptr;
+	ebcdic2ascii(ascii_passwd, ascii_passwd, passwd_len);
+	passwd = ascii_passwd;
+#endif
+			
+			out_buf[0] = 0;
+			OPENSSL_strlcat(out_buf, ascii_dollar, sizeof(out_buf));
+			OPENSSL_strlcat(out_buf, ascii_magic, sizeof(out_buf));
+			OPENSSL_strlcat(out_buf, ascii_dollar, sizeof(out_buf));
+			if (rounds_custom)
+			{
+				char tmp_buf[80]; /* "rounds=999999999" */
+				sprintf(tmp_buf, "rounds=%u", rounds);
+#ifdef CHARSET_EBCDIC
+				/* In case we're really on a ASCII based platform and just pretend */
+		if (tmp_buf[0] != 0x72)  /* ASCII 'r' */
+			ebcdic2ascii(tmp_buf, tmp_buf, strlen(tmp_buf));
+#endif
+				OPENSSL_strlcat(out_buf, tmp_buf, sizeof(out_buf));
+				OPENSSL_strlcat(out_buf, ascii_dollar, sizeof(out_buf));
+			}
+			OPENSSL_strlcat(out_buf, ascii_salt, sizeof(out_buf));
+			
+			/* assert "$5$rounds=999999999$......salt......" */
+			if (strlen(out_buf) > 3 + 17 * rounds_custom + salt_len)
+				goto err;
+			
+			md = EVP_MD_CTX_new();
+			if (md == nullptr
+				|| !EVP_DigestInit_ex(md, sha, nullptr)
+				|| !EVP_DigestUpdate(md, passwd, passwd_len)
+				|| !EVP_DigestUpdate(md, ascii_salt, salt_len))
+				goto err;
+			
+			md2 = EVP_MD_CTX_new();
+			if (md2 == nullptr
+				|| !EVP_DigestInit_ex(md2, sha, nullptr)
+				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
+				|| !EVP_DigestUpdate(md2, ascii_salt, salt_len)
+				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
+				|| !EVP_DigestFinal_ex(md2, buf, nullptr))
+				goto err;
+			
+			for (n = passwd_len; n > buf_size; n -= buf_size)
+			{
+				if (!EVP_DigestUpdate(md, buf, buf_size))
+					goto err;
+			}
+			if (!EVP_DigestUpdate(md, buf, n))
+				goto err;
+			
+			n = passwd_len;
+			while (n)
+			{
+				if (!EVP_DigestUpdate(
+						md,
+						(n & 1) ? buf : (const unsigned char*)passwd,
+						(n & 1) ? buf_size : passwd_len
+				))
+					goto err;
+				n >>= 1;
+			}
+			if (!EVP_DigestFinal_ex(md, buf, nullptr))
+				goto err;
+			
+			/* P sequence */
+			if (!EVP_DigestInit_ex(md2, sha, nullptr))
+				goto err;
+			
+			for (n = passwd_len; n > 0; n--)
+				if (!EVP_DigestUpdate(md2, passwd, passwd_len))
+					goto err;
+			
+			if (!EVP_DigestFinal_ex(md2, temp_buf, nullptr))
+				goto err;
+			
+			if ((p_bytes = static_cast<decltype(p_bytes)>(OPENSSL_zalloc(passwd_len))) == nullptr)
+				goto err;
+			for (cp = p_bytes, n = passwd_len; n > buf_size; n -= buf_size, cp += buf_size)
+				memcpy(cp, temp_buf, buf_size);
+			memcpy(cp, temp_buf, n);
+			
+			/* S sequence */
+			if (!EVP_DigestInit_ex(md2, sha, nullptr))
+				goto err;
+			
+			for (n = 16 + buf[0]; n > 0; n--)
+				if (!EVP_DigestUpdate(md2, ascii_salt, salt_len))
+					goto err;
+			
+			if (!EVP_DigestFinal_ex(md2, temp_buf, nullptr))
+				goto err;
+			
+			if ((s_bytes = static_cast<decltype(s_bytes)>(OPENSSL_zalloc(salt_len))) == nullptr)
+				goto err;
+			for (cp = s_bytes, n = salt_len; n > buf_size; n -= buf_size, cp += buf_size)
+				memcpy(cp, temp_buf, buf_size);
+			memcpy(cp, temp_buf, n);
+			
+			for (n = 0; n < rounds; n++)
+			{
+				if (!EVP_DigestInit_ex(md2, sha, nullptr))
+					goto err;
+				if (!EVP_DigestUpdate(
+						md2,
+						(n & 1) ? (const unsigned char*)p_bytes : buf,
+						(n & 1) ? passwd_len : buf_size
+				))
+					goto err;
+				if (n % 3)
+				{
+					if (!EVP_DigestUpdate(md2, s_bytes, salt_len))
+						goto err;
+				}
+				if (n % 7)
+				{
+					if (!EVP_DigestUpdate(md2, p_bytes, passwd_len))
+						goto err;
+				}
+				if (!EVP_DigestUpdate(
+						md2,
+						(n & 1) ? buf : (const unsigned char*)p_bytes,
+						(n & 1) ? buf_size : passwd_len
+				))
+					goto err;
+				if (!EVP_DigestFinal_ex(md2, buf, nullptr))
+					goto err;
+			}
+			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md);
+			md2 = nullptr;
+			md = nullptr;
+			OPENSSL_free(p_bytes);
+			OPENSSL_free(s_bytes);
+			p_bytes = nullptr;
+			s_bytes = nullptr;
+			
+			cp = out_buf + strlen(out_buf);
+			*cp++ = ascii_dollar[0];
+
+# define B_64_FROM_24_BIT(B2, B1, B0, N)                                  \
+    do {                                                                \
+        unsigned int w = ((B2) << 16) | ((B1) << 8) | (B0);             \
+        int i = (N);                                                    \
+        while (i-- > 0)                                                 \
+            {                                                           \
+                *cp++ = cov_2char[w & 0x3f];                            \
+                w >>= 6;                                                \
+            }                                                           \
+    } while (0)
+			
+			switch (magic[0])
+			{
+				case '5':
+					B_64_FROM_24_BIT (buf[0], buf[10], buf[20], 4);
+					B_64_FROM_24_BIT (buf[21], buf[1], buf[11], 4);
+					B_64_FROM_24_BIT (buf[12], buf[22], buf[2], 4);
+					B_64_FROM_24_BIT (buf[3], buf[13], buf[23], 4);
+					B_64_FROM_24_BIT (buf[24], buf[4], buf[14], 4);
+					B_64_FROM_24_BIT (buf[15], buf[25], buf[5], 4);
+					B_64_FROM_24_BIT (buf[6], buf[16], buf[26], 4);
+					B_64_FROM_24_BIT (buf[27], buf[7], buf[17], 4);
+					B_64_FROM_24_BIT (buf[18], buf[28], buf[8], 4);
+					B_64_FROM_24_BIT (buf[9], buf[19], buf[29], 4);
+					B_64_FROM_24_BIT (0, buf[31], buf[30], 3);
+					break;
+				case '6':
+					B_64_FROM_24_BIT (buf[0], buf[21], buf[42], 4);
+					B_64_FROM_24_BIT (buf[22], buf[43], buf[1], 4);
+					B_64_FROM_24_BIT (buf[44], buf[2], buf[23], 4);
+					B_64_FROM_24_BIT (buf[3], buf[24], buf[45], 4);
+					B_64_FROM_24_BIT (buf[25], buf[46], buf[4], 4);
+					B_64_FROM_24_BIT (buf[47], buf[5], buf[26], 4);
+					B_64_FROM_24_BIT (buf[6], buf[27], buf[48], 4);
+					B_64_FROM_24_BIT (buf[28], buf[49], buf[7], 4);
+					B_64_FROM_24_BIT (buf[50], buf[8], buf[29], 4);
+					B_64_FROM_24_BIT (buf[9], buf[30], buf[51], 4);
+					B_64_FROM_24_BIT (buf[31], buf[52], buf[10], 4);
+					B_64_FROM_24_BIT (buf[53], buf[11], buf[32], 4);
+					B_64_FROM_24_BIT (buf[12], buf[33], buf[54], 4);
+					B_64_FROM_24_BIT (buf[34], buf[55], buf[13], 4);
+					B_64_FROM_24_BIT (buf[56], buf[14], buf[35], 4);
+					B_64_FROM_24_BIT (buf[15], buf[36], buf[57], 4);
+					B_64_FROM_24_BIT (buf[37], buf[58], buf[16], 4);
+					B_64_FROM_24_BIT (buf[59], buf[17], buf[38], 4);
+					B_64_FROM_24_BIT (buf[18], buf[39], buf[60], 4);
+					B_64_FROM_24_BIT (buf[40], buf[61], buf[19], 4);
+					B_64_FROM_24_BIT (buf[62], buf[20], buf[41], 4);
+					B_64_FROM_24_BIT (0, 0, buf[63], 2);
+					break;
+				default:
+					goto err;
+			}
+			*cp = '\0';
+#ifdef CHARSET_EBCDIC
+			ascii2ebcdic(out_buf, out_buf, strlen(out_buf));
+#endif
+			
+			return out_buf;
+
+err:
+			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md);
+			OPENSSL_free(p_bytes);
+			OPENSSL_free(s_bytes);
+			OPENSSL_free(ascii_passwd);
+			return nullptr;
+		}
+	}
+}
+
+#endif //PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
