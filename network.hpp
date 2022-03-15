@@ -13,7 +13,7 @@
 # include <sys/stat.h>
 
 # ifndef MESSENGER_NAME
-#  define MESSENGER_NAME "messenger"
+#  define MESSENGER_NAME "privacy-protection-messenger"
 # endif
 
 # ifndef CERTIFICATE_PATH
@@ -92,8 +92,8 @@
 
 # undef LOG
 # undef ERR
-# define LOG (inetio::__detail__::_log_ << LOG_PREFIX)
-# define ERR (inetio::__detail__::_err_ << ERR_PREFIX)
+# define LOG (inet::__detail__::_log_ << LOG_PREFIX)
+# define ERR (inet::__detail__::_err_ << ERR_PREFIX)
 
 namespace msg
 {
@@ -198,18 +198,17 @@ namespace msg
 		size_t message_no = -1ul;
 	};
 	
-	class client : public inetio::client
+	class client : public inet::client
 	{
 	public:
 		inline explicit client(
-				const inetio::inet_address& server_address, SSL* ssl = nullptr, SSL_CTX* ctx = nullptr,
-				const std::string& cert_file = "", const std::string& key_file = "") : inetio::client(
-				server_address, true, ssl, ctx, cert_file, key_file
-		)
+				const inet::inet_address& server_address, SSL* ssl = nullptr, SSL_CTX* ctx = nullptr,
+				const std::string& cert_file = "", const std::string& key_file = "")
+				: inet::client(server_address, true, cert_file, key_file)
 		{ }
 		
 		template <bool do_fork = true>
-		inline static client* create_client(const inetio::inet_address& server_address)
+		inline static client* create_client(const inet::inet_address& server_address)
 		{
 			bool generate_certs = true;
 			if constexpr(do_fork)
@@ -233,21 +232,21 @@ namespace msg
 				::system((std::string("mkdir -p \"") + work_dir + "\"").c_str());
 				::chdir(work_dir);
 				
-				auto key = inetio::generate_key(error);
+				auto key = inet::generate_key(error);
 				if (!key)
 				{
 					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
 					return nullptr;
 				}
 				
-				auto x509 = inetio::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+				auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
 				if (!x509)
 				{
 					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
 					return nullptr;
 				}
 				
-				if (!inetio::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
+				if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
 				{
 					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
 					return nullptr;
@@ -492,54 +491,51 @@ namespace msg
 		
 		inline bool begin_session(const std::string& login, const std::string& password, std::string& status)
 		{
-			if (!is_connected) is_connected = connect();
-			if (is_connected)
+			if (write(HEADER{HEADER::s_begin_session, login.size(), password.size()}) &&
+				write(login) &&
+				write(password))
 			{
-				if (write(HEADER{HEADER::s_begin_session, login.size(), password.size()}) &&
-					write(login) &&
-					write(password))
+				HEADER res;
+				if (read(res))
 				{
-					HEADER res;
-					if (read(res))
+					switch (res.err)
 					{
-						switch (res.err)
+						case HEADER::e_success:
 						{
-							case HEADER::e_success:
-							{
-								status = E_SUCCESS;
-								return true;
-							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							is_connected = true;
+							status = E_SUCCESS;
+							return true;
+						}
+						case HEADER::e_incorrect_login:
+						{
+							status = E_INCORRECT_LOGIN;
+							return false;
+						}
+						case HEADER::e_incorrect_password:
+						{
+							status = E_INCORRECT_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_long_login:
+						{
+							status = E_TOO_LONG_LOGIN;
+							return false;
+						}
+						case HEADER::e_too_long_password:
+						{
+							status = E_TOO_LONG_PASSWORD;
+							return false;
+						}
+						case HEADER::e_too_short_password:
+						{
+							status = E_TOO_SHORT_PASSWORD;
+							return false;
+						}
+						default:
+						{
+							LOG << E_DERANGED "\n" << ENDENTLN;
+							status = E_DERANGED;
+							return false;
 						}
 					}
 				}
@@ -713,7 +709,7 @@ namespace msg
 									EVP_PKEY* pbkey = nullptr;
 									if (reconstruct_rsa_pub_key(pbkey, rsa_pub, pub_len) > 0)
 									{
-										RSA_private_decrypt()
+										RSA_private_decrypt();
 										return true;
 									}
 								}
@@ -1099,29 +1095,21 @@ namespace msg
 		{
 			return read(&obj, sizeof obj) == sizeof obj;
 		}
-
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "HidingNonVirtualFunction"
 		
-		inline bool read(void* data, size_t size, bool non_block = false)
-		{
-			bool res = inetio::client::read(data, size, non_block) == size;
-			return inetio::client::write(&res, sizeof res) && res;
-		}
-
-#pragma clang diagnostic pop
-		
-		
-		inline ssize_t read(std::string& str, bool non_block = false)
+		inline ssize_t read(std::string& str)
 		{
 			size_t size = 0;
-			if (inetio::client::read(&size, sizeof size, non_block) == sizeof size)
+			return read(&size, sizeof size);
 			{
 				str.resize(size);
-				return read(str.data(), size, non_block);
+				return read(str.data(), size);
 			}
 			return -1;
+		}
+		
+		ssize_t read(void* data, size_t size) override
+		{
+			return inet_io::read(data, size);
 		}
 		
 		template <typename T>
@@ -1149,22 +1137,13 @@ namespace msg
 		{
 			return write(str.c_str(), str.size());
 		}
-
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "HidingNonVirtualFunction"
 		
-		inline bool write(const void* data, size_t size)
+		ssize_t write(const void* data, int size) override
 		{
-			bool res;
-			return inetio::client::write(data, size) &&
-				   inetio::client::read(&res, sizeof res) == sizeof res &&
-				   res;
+			return inet_io::write(data, size);
 		}
-
-#pragma clang diagnostic pop
 		
-		int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
+		inline static int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
 		{
 			auto* pbkeybio = BIO_new_mem_buf((void*)pub_key, pub_len);
 			if (pbkeybio == nullptr)
@@ -1183,7 +1162,7 @@ namespace msg
 			return 1;
 		}
 		
-		int reconstruct_rsa_pri_key(EVP_PKEY* evp_pbkey, EVP_PKEY* evp_pkey, char* pri_key)
+		inline static int reconstruct_rsa_pri_key(EVP_PKEY* evp_pbkey, EVP_PKEY* evp_pkey, char* pri_key)
 		{
 			auto* pkeybio = BIO_new_mem_buf((void*)pri_key, -1);
 			if (pkeybio == nullptr)
@@ -1202,7 +1181,7 @@ namespace msg
 			return 1;
 		}
 		
-		bool generate_rsa_key(char*& pri_key, int& pri_len, char*& pub_key, int& pub_len)
+		inline static bool generate_rsa_key(char*& pri_key, int& pri_len, char*& pub_key, int& pub_len)
 		{
 			int ret = 0;
 			RSA* r = nullptr;
@@ -1293,10 +1272,10 @@ free_all:
 		bool is_connected = false;
 	};
 	
-	class server_io : public inetio::inet_io
+	class server_io : public inet::inet_io
 	{
 	public:
-		server_io(SSL* ssl) : inetio::inet_io(ssl)
+		explicit server_io(inet::inet_io& io) : inet::inet_io(io)
 		{ }
 		
 		inline bool read(HEADER& header)
@@ -1317,26 +1296,10 @@ free_all:
 				message.data = new std::string(data);
 			}
 		}
-
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "HidingNonVirtualFunction"
 		
-		inline bool read(void* data, size_t size, bool non_block = false)
+		ssize_t read(void* data, size_t size) override
 		{
-			if (size > 0)
-			{
-				return inetio::inet_io::read(data, size, non_block) == size;
-			}
-			else return false;
-		}
-
-#pragma clang diagnostic pop
-		
-		
-		inline bool read_status(bool status)
-		{
-			return write(&status, sizeof status);
+			return inet_io::read(data, size);
 		}
 		
 		inline bool write(const HEADER& header)
@@ -1364,34 +1327,22 @@ free_all:
 			if (!str.empty()) res = res && write(str.c_str(), str.size());
 			return res;
 		}
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "HidingNonVirtualFunction"
 		
-		inline bool write(const void* data, size_t size)
+		ssize_t write(const void* data, int size) override
 		{
-			return inetio::inet_io::write(data, size) == size;
-		}
-
-#pragma clang diagnostic pop
-		
-		inline bool write_report()
-		{
-			bool res = false;
-			if (read(&res, sizeof res)) return res;
-			else return false;
+			return inet_io::write(data, size);
 		}
 	};
 	
-	class server : private inetio::server
+	class server : private inet::server
 	{
 	public:
-		inline server(int max_clients, const inetio::inet_address& address)
-				: inetio::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
+		inline server(int max_clients, const inet::inet_address& address)
+				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
 		{ }
 		
 		template <bool do_fork = true>
-		inline static server* create_server(int max_clients, const inetio::inet_address& address)
+		inline static server* create_server(int max_clients, const inet::inet_address& address)
 		{
 			bool generate_certs = true;
 			if constexpr(do_fork)
@@ -1412,21 +1363,21 @@ free_all:
 			{
 				std::string error;
 				
-				auto key = inetio::generate_key(error);
+				auto key = inet::generate_key(error);
 				if (!key)
 				{
 					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
 					return nullptr;
 				}
 				
-				auto x509 = inetio::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+				auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
 				if (!x509)
 				{
 					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
 					return nullptr;
 				}
 				
-				if (!inetio::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
+				if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
 				{
 					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
 					return nullptr;
@@ -1442,7 +1393,7 @@ free_all:
 		
 		inline bool run()
 		{
-			return inetio::server::run(true);
+			return inet::server::run(true);
 		}
 	
 	private:
@@ -1476,7 +1427,7 @@ free_all:
 			return false;
 		}
 		
-		inline static bool process_request(server_io& io, const inetio::inet_address& address, server* serv)
+		inline static bool process_request(server_io io, const inet::inet_address& address, server* serv)
 		{
 			HEADER header;
 			io.read(header);
@@ -1554,7 +1505,6 @@ free_all:
 						if (check_credentials(response, login, password, user))
 						{
 							io.write(user->second.display_name);
-							io.write_report();
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1610,8 +1560,7 @@ free_all:
 					}
 				}
 			}
-			io.write(response);
-			return io.write_report();
+			return io.write(response);
 		}
 		
 		inline static bool send_message(decltype(users.end())& from_user, const MESSAGE& message)
@@ -1639,7 +1588,6 @@ free_all:
 		{
 			if (header.login_size > MAX_LOGIN)
 			{
-				io.read_status(false);
 				::syslog(LOG_ERR, "HEADER::login_size = %zu and is too long.", header.login_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
@@ -1647,7 +1595,6 @@ free_all:
 			
 			if (header.password_size > MAX_PASSWORD)
 			{
-				io.read_status(false);
 				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too long.", header.password_size);
 				response.err = HEADER::e_too_long_password;
 				return true;
@@ -1655,7 +1602,6 @@ free_all:
 			
 			if (header.password_size < 8)
 			{
-				io.read_status(false);
 				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too short.", header.password_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
@@ -1688,13 +1634,11 @@ free_all:
 			if (header.login_size)
 				io.read(*login, header.login_size);
 			(*login)[header.login_size] = 0;
-			io.read_status(true);
 			
 			*password = new char[header.password_size + 1];
 			if (header.password_size)
 				io.read(*password, header.password_size);
 			(*password)[header.password_size] = 0;
-			io.read_status(true);
 			
 			compute_passwd_hash(password);
 			
@@ -1705,7 +1649,6 @@ free_all:
 		{
 			if (header.display_name_size > MAX_DISPLAY_NAME)
 			{
-				io.read_status(false);
 				::syslog(LOG_ERR, "HEADER::display_name_size = %zu and is too long.", header.display_name_size);
 				response.err = HEADER::e_too_long_display_name;
 				return true;
@@ -1723,7 +1666,6 @@ free_all:
 			if (header.display_name_size)
 				io.read(*display_name, header.display_name_size);
 			(*display_name)[header.display_name_size] = 0;
-			io.read_status(true);
 			
 			return true;
 		}
@@ -1734,7 +1676,6 @@ free_all:
 			if (header.data_size)
 				io.read(*data, header.data_size);
 			(*data)[header.data_size] = 0;
-			io.read_status(true);
 			
 			return true;
 		}
@@ -1783,11 +1724,10 @@ free_all:
 			}
 		}
 		
-		inline static bool client_processing(int socket, SSL* ssl, const inetio::inet_address& address, inetio::server* serv)
+		inline static bool client_processing(inet::inet_io& io, const inet::inet_address& address, inet::server* serv)
 		{
 			auto* this_ptr = static_cast<server*>(serv->extra);
-			server_io io(ssl);
-			while (process_request(io, address, this_ptr));
+			while (process_request(server_io(io), address, this_ptr));
 			return true;
 		}
 		
