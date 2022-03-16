@@ -147,7 +147,7 @@ namespace msg
 			s_end_session,
 			s_send_message,
 			s_send_message_password,
-			s_check_incoming,
+			s_wait_for_incoming,
 			s_delete_message,
 			s_check_online_status,
 			s_find_users_by_display_name,
@@ -601,24 +601,14 @@ namespace msg
 		}
 		
 		inline bool send_message(
-				const std::string& login, const std::string& password, const MESSAGE& message, const std::string& message_password,
-				std::string& status)
+				const std::string& login, const std::string& password, const MESSAGE& message, size_t& message_no, std::string& status)
 		{
 			if (is_connected)
 			{
+				message_no = -1ul;
 				size_t message_size = sizeof message;
 				if (message.destination) message_size += message.destination->size();
 				if (message.data) message_size += message.data->size();
-				
-				auto buf = xorcrypt::buffer();
-				buf.take(message.data->data(), message.data->size());
-				
-				auto buf_dest = new xorcrypt::buffer_destination(buf);
-				xorcrypt::xor_encrypt xe(message_password, *buf_dest);
-				
-				xe.write(message.data->c_str(), message.data->size());
-				
-				delete buf_dest;
 				
 				if (write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size}) &&
 					write(login) &&
@@ -633,7 +623,7 @@ namespace msg
 							case HEADER::e_success:
 							{
 								status = E_SUCCESS;
-								return true;
+								return read(message_no);
 							}
 							case HEADER::e_incorrect_login:
 							{
@@ -678,7 +668,7 @@ namespace msg
 			return false;
 		}
 		
-		inline bool check_incoming(
+		inline bool wait_for_incoming(
 				const std::string& login, const std::string& password, MESSAGE& message, const std::string& message_password, std::string& status)
 		{
 			if (is_connected)
@@ -687,7 +677,7 @@ namespace msg
 				if (message.destination) message_size += message.destination->size();
 				if (message.data) message_size += message.data->size();
 				
-				if (write(HEADER{HEADER::s_check_incoming, login.size(), password.size(), 0, message_size}) &&
+				if (write(HEADER{HEADER::s_wait_for_incoming, login.size(), password.size(), 0, message_size}) &&
 					write(login) &&
 					write(password))
 				{
@@ -698,23 +688,8 @@ namespace msg
 						{
 							case HEADER::e_success:
 							{
-								/// TODO: REWRITE ALL
-								read(message);
-								status = E_SUCCESS;
-								char* rsa_pub;
-								int pub_len;
-								if (read(pub_len) &&
-									read(rsa_pub, pub_len))
-								{
-									EVP_PKEY* pbkey = nullptr;
-									if (reconstruct_rsa_pub_key(pbkey, rsa_pub, pub_len) > 0)
-									{
-										RSA_private_decrypt();
-										return true;
-									}
-								}
-								return false;
-								/// TODO: REWRITE ALL
+								/// TODO: Message acceptance
+								return true;
 							}
 							case HEADER::e_message_not_found:
 							{
@@ -1533,7 +1508,7 @@ free_all:
 					{
 						break;
 					}
-					case HEADER::s_check_incoming:
+					case HEADER::s_wait_for_incoming:
 					{
 						break;
 					}
