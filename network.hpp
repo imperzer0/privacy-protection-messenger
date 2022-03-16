@@ -146,7 +146,6 @@ namespace msg
 			s_begin_session,
 			s_end_session,
 			s_send_message,
-			s_send_message_password,
 			s_wait_for_incoming,
 			s_delete_message,
 			s_check_online_status,
@@ -1298,8 +1297,9 @@ free_all:
 		
 		inline bool write(const std::string& str)
 		{
-			bool res = write(new size_t(str.size()), sizeof(size_t));
-			if (!str.empty()) res = res && write(str.c_str(), str.size());
+			size_t size = str.size();
+			bool res = write(&size, sizeof size);
+			if (!str.empty()) res = res && write(str.c_str(), size);
 			return res;
 		}
 		
@@ -1381,26 +1381,6 @@ free_all:
 		
 		static std::map<std::string, USER_DATA> users;
 		
-		inline static bool check_credentials(HEADER& response, const char* login, const char* password, decltype(users.end())& user)
-		{
-			user = users.find(login);
-			if (user != users.end())
-			{
-				if (user->second.password == password)
-				{
-					return true;
-				}
-				else
-				{
-					response.err = HEADER::e_incorrect_password;
-				}
-			}
-			else
-			{
-				response.err = HEADER::e_incorrect_login;
-			}
-			return false;
-		}
 		
 		inline static bool process_request(server_io io, const inet::inet_address& address, server* serv)
 		{
@@ -1447,12 +1427,9 @@ free_all:
 								if (check_credentials(response, login, password, user))
 								{
 									user->second.password = data;
+									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login);
 									response.err = HEADER::e_success;
 								}
-							}
-							else
-							{
-								response.err = HEADER::e_deranged;
 							}
 						}
 						break;
@@ -1469,6 +1446,7 @@ free_all:
 								if (new_display_name.size() > MAX_DISPLAY_NAME)
 									new_display_name.resize(MAX_DISPLAY_NAME);
 								user->second.display_name = new_display_name;
+								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login, new_display_name.c_str());
 								response.err = HEADER::e_success;
 							}
 						}
@@ -1480,6 +1458,7 @@ free_all:
 						if (check_credentials(response, login, password, user))
 						{
 							io.write(user->second.display_name);
+							::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login);
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1490,6 +1469,7 @@ free_all:
 						if (check_credentials(response, login, password, user))
 						{
 							user->second.is_session_running = true;
+							::syslog(LOG_DEBUG, "User \"%s\" started session.", login);
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1500,6 +1480,7 @@ free_all:
 						if (check_credentials(response, login, password, user))
 						{
 							user->second.is_session_running = false;
+							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login);
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1536,6 +1517,19 @@ free_all:
 				}
 			}
 			return io.write(response);
+		}
+		
+		inline static bool check_credentials(HEADER& response, const char* login, const char* password, decltype(users.end())& user)
+		{
+			user = users.find(login);
+			if (user != users.end())
+				if (user->second.password == password)
+					return true;
+				else
+					response.err = HEADER::e_incorrect_password;
+			else
+				response.err = HEADER::e_incorrect_login;
+			return false;
 		}
 		
 		inline static bool send_message(decltype(users.end())& from_user, const MESSAGE& message)
