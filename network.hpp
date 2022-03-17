@@ -1051,17 +1051,19 @@ namespace msg
 		
 		inline bool read(MESSAGE& message)
 		{
-			bool res = read(&message, sizeof message) == sizeof message;
-			if (res)
+			if (read(&message, sizeof message) == sizeof message)
 			{
 				char* source = new char[message.source_size + 1]{ };
 				char* data = new char[message.data_size + 1]{ };
-				res = res &&
-					  read(source, message.source_size) == message.source_size &&
-					  read(data, message.data_size) == message.data_size;
-				message.source = new std::string(source);
-				message.data = new std::string(data);
+				if (read(source, message.source_size) == message.source_size &&
+					read(data, message.data_size) == message.data_size)
+				{
+					message.source = new std::string(source);
+					message.data = new std::string(data);
+					return true;
+				}
 			}
+			return false;
 		}
 		
 		template <typename T>
@@ -1089,19 +1091,18 @@ namespace msg
 		template <typename T>
 		inline bool write(const T& fixed_size_obj)
 		{
-			return write(&fixed_size_obj, sizeof fixed_size_obj);
+			return write(&fixed_size_obj, sizeof fixed_size_obj) == sizeof fixed_size_obj;
 		}
 		
-		inline bool write(MESSAGE message)
+		inline bool write(MESSAGE& message)
 		{
-			bool res = false;
 			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
 			{
 				message.destination_size = message.destination->size();
 				message.data_size = message.data->size();
-				if (write(&message, sizeof message) &&
-					write(message.destination->c_str(), sizeof message.destination->size()) &&
-					write(message.data->c_str(), sizeof message.data->size()))
+				if (write(&message, sizeof message) == sizeof message &&
+					write(message.destination->c_str(), message.destination->size()) == message.destination->size() &&
+					write(message.data->c_str(), message.data->size()) == message.data->size())
 					return true;
 			}
 			return false;
@@ -1259,16 +1260,19 @@ free_all:
 		
 		inline bool read(MESSAGE& message)
 		{
-			bool res = read(&message, sizeof message) == sizeof message;
-			if (res)
+			if (read(&message, sizeof message) == sizeof message)
 			{
-				char* source = new char[message.destination_size + 1]{ };
+				char* destination = new char[message.destination_size + 1]{ };
 				char* data = new char[message.data_size + 1]{ };
-				res = res && read(source, message.destination_size) &&
-					  read(data, message.data_size);
-				message.destination = new std::string(source);
-				message.data = new std::string(data);
+				if (read(destination, message.destination_size) == message.destination_size &&
+					read(data, message.data_size) == message.data_size)
+				{
+					message.destination = new std::string(destination);
+					message.data = new std::string(data);
+					return true;
+				}
 			}
+			return false;
 		}
 		
 		ssize_t read(void* data, size_t size) override
@@ -1278,29 +1282,31 @@ free_all:
 		
 		inline bool write(const HEADER& header)
 		{
-			return write(&header, sizeof header);
+			return write(&header, sizeof header) == sizeof header;
 		}
 		
 		inline bool write(MESSAGE message)
 		{
-			bool res = false;
 			if (message.source && !message.source->empty() && message.data && !message.data->empty())
 			{
 				message.source_size = message.source->size();
 				message.data_size = message.data->size();
-				res = write(&message, sizeof message) &&
-					  write(message.source->c_str(), sizeof message.source->size()) &&
-					  write(message.data->c_str(), sizeof message.data->size());
+				if (write(&message, sizeof message) == sizeof message &&
+					write(message.source->c_str(), message.source->size()) == message.source->size() &&
+					write(message.data->c_str(), message.data->size()) == message.source->size())
+					return true;
 			}
-			return res;
+			return false;
 		}
 		
 		inline bool write(const std::string& str)
 		{
 			size_t size = str.size();
-			bool res = write(&size, sizeof size);
-			if (!str.empty()) res = res && write(str.c_str(), size);
-			return res;
+			if (write(&size, sizeof size) == sizeof size)
+				if (!str.empty())
+					if (write(str.c_str(), size) == size)
+						return true;
+			return false;
 		}
 		
 		ssize_t write(const void* data, int size) override
@@ -1468,6 +1474,7 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
+							/// TODO: Receive encryption public key
 							user->second.is_session_running = true;
 							::syslog(LOG_DEBUG, "User \"%s\" started session.", login);
 							response.err = HEADER::e_success;
@@ -1479,6 +1486,7 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
+							/// TODO: Clear encryption public key
 							user->second.is_session_running = false;
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login);
 							response.err = HEADER::e_success;
@@ -1487,26 +1495,66 @@ free_all:
 					}
 					case HEADER::s_send_message:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							/// TODO: Notify receiver
+							response.err = HEADER::e_success;
+						}
 						break;
 					}
 					case HEADER::s_wait_for_incoming:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							/// TODO: Create direct waining connection
+							response.err = HEADER::e_success;
+						}
 						break;
 					}
 					case HEADER::s_delete_message:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							MESSAGE message;
+							if (io.read(message))
+							{
+								/// TODO: Delete message at index message.message_no
+								response.err = HEADER::e_success;
+							}
+						}
 						break;
 					}
 					case HEADER::s_check_online_status:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							/// TODO: Return online status
+							response.err = HEADER::e_success;
+						}
 						break;
 					}
 					case HEADER::s_find_users_by_display_name:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							/// TODO: Return result list
+							response.err = HEADER::e_success;
+						}
 						break;
 					}
 					case HEADER::s_find_users_by_login:
 					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							/// TODO: Return result list
+							response.err = HEADER::e_success;
+						}
 						break;
 					}
 					default:
