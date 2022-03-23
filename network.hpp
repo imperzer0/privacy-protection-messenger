@@ -146,7 +146,7 @@ namespace msg
 			s_begin_session,
 			s_end_session,
 			s_send_message,
-			s_wait_for_incoming,
+			s_query_incoming,
 			s_delete_message,
 			s_check_online_status,
 			s_find_users_by_display_name,
@@ -187,9 +187,9 @@ namespace msg
 		};
 		destination_type dest_type = dt_zero;
 		
-		std::string* source = nullptr;
-		std::string* destination = nullptr;
-		std::string* data = nullptr;
+		std::unique_ptr<std::string> source = nullptr;
+		std::unique_ptr<std::string> destination = nullptr;
+		std::unique_ptr<std::string> data = nullptr;
 		
 		size_t source_size = 0;
 		size_t destination_size = 0;
@@ -667,8 +667,8 @@ namespace msg
 			return false;
 		}
 		
-		inline bool wait_for_incoming(
-				const std::string& login, const std::string& password, MESSAGE& message, const std::string& message_password, std::string& status)
+		inline bool query_incoming(
+				const std::string& login, const std::string& password, MESSAGE& message, std::string& status)
 		{
 			if (is_connected)
 			{
@@ -676,7 +676,7 @@ namespace msg
 				if (message.destination) message_size += message.destination->size();
 				if (message.data) message_size += message.data->size();
 				
-				if (write(HEADER{HEADER::s_wait_for_incoming, login.size(), password.size(), 0, message_size}) &&
+				if (write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size}) &&
 					write(login) &&
 					write(password))
 				{
@@ -687,7 +687,7 @@ namespace msg
 						{
 							case HEADER::e_success:
 							{
-								/// TODO: Message acceptance
+								message.data = std::make_unique<std::string>();
 								return true;
 							}
 							case HEADER::e_message_not_found:
@@ -805,7 +805,8 @@ namespace msg
 			return false;
 		}
 		
-		inline bool check_online_status(const std::string& login, const std::string& password, const std::string& another_user, std::string& status)
+		inline bool check_online_status(
+				const std::string& login, const std::string& password, const std::string& another_user, bool& online_status, std::string& status)
 		{
 			if (is_connected)
 			{
@@ -821,6 +822,7 @@ namespace msg
 						{
 							case HEADER::e_success:
 							{
+								read(online_status);
 								status = E_SUCCESS;
 								return true;
 							}
@@ -1058,10 +1060,14 @@ namespace msg
 				if (read(source, message.source_size) == message.source_size &&
 					read(data, message.data_size) == message.data_size)
 				{
-					message.source = new std::string(source);
-					message.data = new std::string(data);
+					message.source = std::make_unique<std::string>(source);
+					message.data = std::make_unique<std::string>(data);
+					delete[] source;
+					delete[] data;
 					return true;
 				}
+				delete[] source;
+				delete[] data;
 			}
 			return false;
 		}
@@ -1267,10 +1273,14 @@ free_all:
 				if (read(destination, message.destination_size) == message.destination_size &&
 					read(data, message.data_size) == message.data_size)
 				{
-					message.destination = new std::string(destination);
-					message.data = new std::string(data);
+					message.destination = std::make_unique<std::string>(destination);
+					message.data = std::make_unique<std::string>(data);
+					delete[] destination;
+					delete[] data;
 					return true;
 				}
+				delete[] destination;
+				delete[] data;
 			}
 			return false;
 		}
@@ -1309,6 +1319,12 @@ free_all:
 			return false;
 		}
 		
+		template <typename T>
+		inline bool write(const T& obj)
+		{
+			return write(&obj, sizeof obj);
+		}
+		
 		ssize_t write(const void* data, int size) override
 		{
 			return inet_io::write(data, size);
@@ -1323,7 +1339,7 @@ free_all:
 		{ }
 		
 		template <bool do_fork = true>
-		inline static server* create_server(int max_clients, const inet::inet_address& address)
+		inline static std::unique_ptr<server> create_server(int max_clients, const inet::inet_address& address)
 		{
 			bool generate_certs = true;
 			if constexpr(do_fork)
@@ -1369,7 +1385,7 @@ free_all:
 			
 			load_users();
 			
-			return new server(max_clients, address);
+			return std::make_unique<server>(max_clients, address);
 		}
 		
 		inline bool run()
@@ -1394,8 +1410,8 @@ free_all:
 			io.read(header);
 			
 			HEADER response{header.sig};
-			char* login, * password;
-			if (read_credentials(io, header, response, &login, &password))
+			std::string login, password;
+			if (read_credentials(io, header, response, login, password))
 			{
 				switch (header.sig)
 				{
@@ -1403,20 +1419,20 @@ free_all:
 						return false;
 					case HEADER::s_register_user:
 					{
-						char* display_name;
-						if (read_display_name(io, header, response, &display_name))
+						std::string display_name;
+						if (read_display_name(io, header, response, display_name))
 						{
 							auto login_str = std::string(login);
 							if (users.find(login_str) == users.end())
 							{
-								::syslog(LOG_DEBUG, "Registering user \"%s\"...", login);
-								users[login_str] = {std::string(password), std::string(display_name)};
+								::syslog(LOG_DEBUG, "Registering user \"%s\"...", login.c_str());
+								users[login_str] = {password, display_name};
 								save_users();
 								response.err = HEADER::e_success;
 							}
 							else
 							{
-								::syslog(LOG_DEBUG, "User \"%s\" already exists.", login);
+								::syslog(LOG_DEBUG, "User \"%s\" already exists.", login.c_str());
 								response.err = HEADER::e_user_already_exists;
 							}
 						}
@@ -1424,16 +1440,16 @@ free_all:
 					}
 					case HEADER::s_set_password:
 					{
-						char* data;
-						if (read_data(io, header, &data))
+						std::string data;
+						if (read_data(io, header, data))
 						{
-							if (compute_passwd_hash(&data))
+							if (compute_passwd_hash(data))
 							{
 								decltype(users.end()) user;
 								if (check_credentials(response, login, password, user))
 								{
 									user->second.password = data;
-									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login);
+									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
 									response.err = HEADER::e_success;
 								}
 							}
@@ -1442,8 +1458,8 @@ free_all:
 					}
 					case HEADER::s_set_display_name:
 					{
-						char* data;
-						if (read_data(io, header, &data))
+						std::string data;
+						if (read_data(io, header, data))
 						{
 							decltype(users.end()) user;
 							if (check_credentials(response, login, password, user))
@@ -1452,7 +1468,7 @@ free_all:
 								if (new_display_name.size() > MAX_DISPLAY_NAME)
 									new_display_name.resize(MAX_DISPLAY_NAME);
 								user->second.display_name = new_display_name;
-								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login, new_display_name.c_str());
+								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), new_display_name.c_str());
 								response.err = HEADER::e_success;
 							}
 						}
@@ -1464,7 +1480,7 @@ free_all:
 						if (check_credentials(response, login, password, user))
 						{
 							io.write(user->second.display_name);
-							::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login);
+							::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1476,7 +1492,7 @@ free_all:
 						{
 							/// TODO: Receive encryption public key
 							user->second.is_session_running = true;
-							::syslog(LOG_DEBUG, "User \"%s\" started session.", login);
+							::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1488,7 +1504,7 @@ free_all:
 						{
 							/// TODO: Clear encryption public key
 							user->second.is_session_running = false;
-							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login);
+							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1503,12 +1519,12 @@ free_all:
 						}
 						break;
 					}
-					case HEADER::s_wait_for_incoming:
+					case HEADER::s_query_incoming:
 					{
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Create direct waining connection
+							/// TODO: Return top message from incoming queue
 							response.err = HEADER::e_success;
 						}
 						break;
@@ -1530,10 +1546,26 @@ free_all:
 					case HEADER::s_check_online_status:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						std::string target;
+						if (read_data(io, header, target))
 						{
-							/// TODO: Return online status
-							response.err = HEADER::e_success;
+							if (check_credentials(response, login, password, user))
+							{
+								auto target_user = users.find(target);
+								if (target_user != users.end())
+								{
+									io.write(target_user->second.is_session_running);
+									response.err = HEADER::e_success;
+								}
+								else
+								{
+									response.err = HEADER::e_user_not_found;
+								}
+							}
+						}
+						else
+						{
+							response.err = HEADER::e_deranged;
 						}
 						break;
 					}
@@ -1567,7 +1599,7 @@ free_all:
 			return io.write(response);
 		}
 		
-		inline static bool check_credentials(HEADER& response, const char* login, const char* password, decltype(users.end())& user)
+		inline static bool check_credentials(HEADER& response, const std::string& login, const std::string& password, decltype(users.end())& user)
 		{
 			user = users.find(login);
 			if (user != users.end())
@@ -1627,14 +1659,14 @@ free_all:
 			return false;
 		}
 		
-		inline static bool compute_passwd_hash(char** password)
+		inline static bool compute_passwd_hash(std::string& password)
 		{
 			char* salt = nullptr;
 			char* hash = nullptr;
-			if (hash_passwd(&salt, &hash, *password, __detail__::PASSWD_HASH_TYPE))
+			if (hash_passwd(&salt, &hash, password.data(), __detail__::PASSWD_HASH_TYPE))
 			{
-				delete[] *password;
-				*password = hash;
+				password.clear();
+				password = hash;
 				delete[] salt;
 				return true;
 			}
@@ -1642,20 +1674,20 @@ free_all:
 			return false;
 		}
 		
-		inline static bool read_credentials(server_io& io, const HEADER& header, HEADER& response, char** login, char** password)
+		inline static bool read_credentials(server_io& io, const HEADER& header, HEADER& response, std::string& login, std::string& password)
 		{
 			if (assert_credentials(io, header, response))
 				return false;
 			
-			*login = new char[header.login_size + 1];
+			login.resize(header.login_size + 1, 0);
 			if (header.login_size)
-				io.read(*login, header.login_size);
-			(*login)[header.login_size] = 0;
+				io.read(login.data(), header.login_size);
+			login[header.login_size] = 0;
 			
-			*password = new char[header.password_size + 1];
+			password.resize(header.password_size + 1, 0);
 			if (header.password_size)
-				io.read(*password, header.password_size);
-			(*password)[header.password_size] = 0;
+				io.read(password.data(), header.password_size);
+			password[header.password_size] = 0;
 			
 			compute_passwd_hash(password);
 			
@@ -1674,25 +1706,25 @@ free_all:
 			return false;
 		}
 		
-		inline static bool read_display_name(server_io& io, const HEADER& header, HEADER& response, char** display_name)
+		inline static bool read_display_name(server_io& io, const HEADER& header, HEADER& response, std::string& display_name)
 		{
 			if (assert_display_name(io, header, response))
 				return false;
 			
-			*display_name = new char[header.display_name_size + 1];
+			display_name.resize(header.display_name_size + 1, 0);
 			if (header.display_name_size)
-				io.read(*display_name, header.display_name_size);
-			(*display_name)[header.display_name_size] = 0;
+				io.read(display_name.data(), header.display_name_size);
+			display_name[header.display_name_size] = 0;
 			
 			return true;
 		}
 		
-		inline static bool read_data(server_io& io, const HEADER& header, char** data)
+		inline static bool read_data(server_io& io, const HEADER& header, std::string& data)
 		{
-			*data = new char[header.data_size + 1];
+			data.resize(header.data_size + 1, 0);
 			if (header.data_size)
-				io.read(*data, header.data_size);
-			(*data)[header.data_size] = 0;
+				io.read(data.data(), header.data_size);
+			data[header.data_size] = 0;
 			
 			return true;
 		}

@@ -7,10 +7,10 @@
 
 #define HELP COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET "\n" COLOR_RESET COLOR_YELLOW \
              "Options:\n"                                                                                                                  \
-             " --mode|-m        CLIENT/SERVER    client or server mode\n"                                                                  \
+             " --mode|-m       CLIENT/SERVER  client or server mode\n"                                                                     \
              " For CLIENT mode\n"                                                                                                          \
-             "  --login|-l         <login>     login\n"                                                                                    \
-             "  --password|-p      <password>  password\n"                                                                                 \
+             "  --login|-l     <login>        login\n"                                                                                     \
+             "  --password|-p  <password>     password\n"                                                                                  \
              " For SERVER mode\n"                                                                                                          \
              " For both\n"                                                                                                                 \
              " --version|-v                   print application version\n" COLOR_RESET "\n"
