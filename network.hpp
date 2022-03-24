@@ -195,7 +195,78 @@ namespace msg
 		size_t destination_size = 0;
 		size_t data_size = 0;
 		size_t message_no = -1ul;
+		
+		MESSAGE() = default;
+		
+		MESSAGE(const MESSAGE& msg)
+				: dest_type(msg.dest_type),
+				  source(std::make_unique<std::string>(*msg.source)),
+				  destination(std::make_unique<std::string>(*msg.destination)),
+				  data(std::make_unique<std::string>(*msg.data)),
+				  source_size(msg.source->size()),
+				  destination_size(msg.destination->size()),
+				  data_size(msg.data->size()),
+				  message_no(msg.message_no)
+		{ }
 	};
+
+#define HANDLE_ERRORS    case HEADER::e_incorrect_login: \
+                        {                                \
+                            status = E_INCORRECT_LOGIN;  \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_incorrect_password: \
+                        {                                \
+                            status = E_INCORRECT_PASSWORD; \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_too_long_login:   \
+                        {                                \
+                            status = E_TOO_LONG_LOGIN;   \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_too_long_password:\
+                        {                                \
+                            status = E_TOO_LONG_PASSWORD;\
+                            return false;                \
+                        }                                \
+                        case HEADER::e_too_short_password: \
+                        {                                \
+                            status = E_TOO_SHORT_PASSWORD; \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_too_long_display_name: \
+                        {                                \
+                            status = E_TOO_LONG_DISPLAY_NAME; \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_no_permission:    \
+                        {                                \
+                            status = E_NO_PERMISSION;    \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_user_already_exists:\
+                        {                                \
+                            status = E_USER_ALREADY_EXISTS;\
+                            return false;                \
+                        }                                \
+                        case HEADER::e_user_not_found:   \
+                        {                                \
+                            status = E_USER_NOT_FOUND;   \
+                            return false;                \
+                        }                                \
+                        case HEADER::e_message_not_found:\
+                        {                                \
+                            status = E_MESSAGE_NOT_FOUND;\
+                            return false;                \
+                        }                                \
+                        default:                         \
+                        {                                \
+                            LOG << E_DERANGED "\n" << ENDENTLN;  \
+                            status = E_DERANGED;            \
+                            return false;                   \
+                        }
+	
 	
 	class client : public inet::client
 	{
@@ -274,37 +345,7 @@ namespace msg
 							status = E_SUCCESS;
 							return true;
 						}
-						case HEADER::e_user_already_exists:
-						{
-							status = E_USER_ALREADY_EXISTS;
-							return false;
-						}
-						case HEADER::e_too_long_login:
-						{
-							status = E_TOO_LONG_LOGIN;
-							return false;
-						}
-						case HEADER::e_too_long_password:
-						{
-							status = E_TOO_LONG_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_short_password:
-						{
-							status = E_TOO_SHORT_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_long_display_name:
-						{
-							status = E_TOO_LONG_DISPLAY_NAME;
-							return false;
-						}
-						default:
-						{
-							ERR << E_DERANGED "\n" << ENDENTLN;
-							status = E_DERANGED;
-							return false;
-						}
+						HANDLE_ERRORS
 					}
 				}
 			}
@@ -328,47 +369,7 @@ namespace msg
 							status = E_SUCCESS;
 							return true;
 						}
-						case HEADER::e_incorrect_login:
-						{
-							status = E_INCORRECT_LOGIN;
-							return false;
-						}
-						case HEADER::e_incorrect_password:
-						{
-							status = E_INCORRECT_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_long_login:
-						{
-							status = E_TOO_LONG_LOGIN;
-							return false;
-						}
-						case HEADER::e_too_long_password:
-						{
-							status = E_TOO_LONG_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_short_password:
-						{
-							status = E_TOO_SHORT_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_long_display_name:
-						{
-							status = E_TOO_LONG_DISPLAY_NAME;
-							return false;
-						}
-						case HEADER::e_no_permission:
-						{
-							status = E_NO_PERMISSION;
-							return false;
-						}
-						default:
-						{
-							ERR << E_DERANGED "\n" << ENDENTLN;
-							status = E_DERANGED;
-							return false;
-						}
+						HANDLE_ERRORS
 					}
 				}
 			}
@@ -388,47 +389,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					case HEADER::e_incorrect_login:
-					{
-						status = E_INCORRECT_LOGIN;
-						return false;
-					}
-					case HEADER::e_incorrect_password:
-					{
-						status = E_INCORRECT_PASSWORD;
-						return false;
-					}
-					case HEADER::e_too_long_login:
-					{
-						status = E_TOO_LONG_LOGIN;
-						return false;
-					}
-					case HEADER::e_too_long_password:
-					{
-						status = E_TOO_LONG_PASSWORD;
-						return false;
-					}
-					case HEADER::e_too_short_password:
-					{
-						status = E_TOO_SHORT_PASSWORD;
-						return false;
-					}
-					case HEADER::e_too_long_display_name:
-					{
-						status = E_TOO_LONG_DISPLAY_NAME;
-						return false;
-					}
-					case HEADER::e_no_permission:
-					{
-						status = E_NO_PERMISSION;
-						return false;
-					}
-					default:
-					{
-						ERR << E_DERANGED "\n" << ENDENTLN;
-						status = E_DERANGED;
-						return false;
-					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -451,37 +412,7 @@ namespace msg
 							read(display_name);
 							return true;
 						}
-						case HEADER::e_incorrect_login:
-						{
-							status = E_INCORRECT_LOGIN;
-							return false;
-						}
-						case HEADER::e_incorrect_password:
-						{
-							status = E_INCORRECT_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_long_login:
-						{
-							status = E_TOO_LONG_LOGIN;
-							return false;
-						}
-						case HEADER::e_too_long_password:
-						{
-							status = E_TOO_LONG_DISPLAY_NAME;
-							return false;
-						}
-						case HEADER::e_too_short_password:
-						{
-							status = E_TOO_SHORT_PASSWORD;
-							return false;
-						}
-						default:
-						{
-							ERR << E_DERANGED "\n" << ENDENTLN;
-							status = E_DERANGED;
-							return false;
-						}
+						HANDLE_ERRORS
 					}
 				}
 			}
@@ -505,37 +436,7 @@ namespace msg
 							status = E_SUCCESS;
 							return true;
 						}
-						case HEADER::e_incorrect_login:
-						{
-							status = E_INCORRECT_LOGIN;
-							return false;
-						}
-						case HEADER::e_incorrect_password:
-						{
-							status = E_INCORRECT_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_long_login:
-						{
-							status = E_TOO_LONG_LOGIN;
-							return false;
-						}
-						case HEADER::e_too_long_password:
-						{
-							status = E_TOO_LONG_PASSWORD;
-							return false;
-						}
-						case HEADER::e_too_short_password:
-						{
-							status = E_TOO_SHORT_PASSWORD;
-							return false;
-						}
-						default:
-						{
-							LOG << E_DERANGED "\n" << ENDENTLN;
-							status = E_DERANGED;
-							return false;
-						}
+						HANDLE_ERRORS
 					}
 				}
 			}
@@ -561,37 +462,7 @@ namespace msg
 								is_connected = false;
 								return true;
 							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -600,11 +471,10 @@ namespace msg
 		}
 		
 		inline bool send_message(
-				const std::string& login, const std::string& password, const MESSAGE& message, size_t& message_no, std::string& status)
+				const std::string& login, const std::string& password, const MESSAGE& message, std::string& status)
 		{
 			if (is_connected)
 			{
-				message_no = -1ul;
 				size_t message_size = sizeof message;
 				if (message.destination) message_size += message.destination->size();
 				if (message.data) message_size += message.data->size();
@@ -622,44 +492,9 @@ namespace msg
 							case HEADER::e_success:
 							{
 								status = E_SUCCESS;
-								return read(message_no);
+								return true;
 							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -687,50 +522,10 @@ namespace msg
 						{
 							case HEADER::e_success:
 							{
-								message.data = std::make_unique<std::string>();
-								return true;
+								status = E_SUCCESS;
+								return read(message);
 							}
-							case HEADER::e_message_not_found:
-							{
-								status = E_MESSAGE_NOT_FOUND;
-								return false;
-							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -757,47 +552,7 @@ namespace msg
 								status = E_SUCCESS;
 								return true;
 							}
-							case HEADER::e_message_not_found:
-							{
-								status = E_MESSAGE_NOT_FOUND;
-								return false;
-							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -826,47 +581,7 @@ namespace msg
 								status = E_SUCCESS;
 								return true;
 							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							case HEADER::e_user_not_found:
-							{
-								status = E_USER_NOT_FOUND;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -907,52 +622,7 @@ namespace msg
 								}
 								return false;
 							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_display_name:
-							{
-								status = E_TOO_LONG_DISPLAY_NAME;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							case HEADER::e_user_not_found:
-							{
-								status = E_USER_NOT_FOUND;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -993,52 +663,7 @@ namespace msg
 								}
 								return false;
 							}
-							case HEADER::e_incorrect_login:
-							{
-								status = E_INCORRECT_LOGIN;
-								return false;
-							}
-							case HEADER::e_incorrect_password:
-							{
-								status = E_INCORRECT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_login:
-							{
-								status = E_TOO_LONG_LOGIN;
-								return false;
-							}
-							case HEADER::e_too_long_password:
-							{
-								status = E_TOO_LONG_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_short_password:
-							{
-								status = E_TOO_SHORT_PASSWORD;
-								return false;
-							}
-							case HEADER::e_too_long_display_name:
-							{
-								status = E_TOO_LONG_DISPLAY_NAME;
-								return false;
-							}
-							case HEADER::e_no_permission:
-							{
-								status = E_NO_PERMISSION;
-								return false;
-							}
-							case HEADER::e_user_not_found:
-							{
-								status = E_USER_NOT_FOUND;
-								return false;
-							}
-							default:
-							{
-								LOG << E_DERANGED "\n" << ENDENTLN;
-								status = E_DERANGED;
-								return false;
-							}
+							HANDLE_ERRORS
 						}
 					}
 				}
@@ -1100,7 +725,7 @@ namespace msg
 			return write(&fixed_size_obj, sizeof fixed_size_obj) == sizeof fixed_size_obj;
 		}
 		
-		inline bool write(MESSAGE& message)
+		inline bool write(MESSAGE message)
 		{
 			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
 			{
@@ -1331,13 +956,50 @@ free_all:
 		}
 	};
 	
+	class MESSAGES
+	{
+	public:
+		MESSAGES() = default;
+		
+		MESSAGES(const MESSAGES&) = delete;
+		
+		MESSAGES(MESSAGES&&) = delete;
+		
+		bool put_message(const std::string& user, const MESSAGE& message)
+		{
+			auto user_it = incoming.find(user);
+			if (user_it != incoming.end())
+			{
+				user_it->second.push_back(message);
+				return true;
+			}
+			return false;
+		}
+		
+		bool message_available(const std::string& user)
+		{
+			auto user_it = incoming.find(user);
+			if (user_it != incoming.end())
+			{
+				return !user_it->second.empty();
+			}
+			return false;
+		}
+		
+		MESSAGE invoke_message(const std::string& user)
+		{
+			auto res = incoming[user].front();
+			incoming[user].pop_front();
+			return res;
+		}
+	
+	private:
+		std::map<std::string, std::deque<MESSAGE>> incoming;
+	};
+	
 	class server : private inet::server
 	{
 	public:
-		inline server(int max_clients, const inet::inet_address& address)
-				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
-		{ }
-		
 		template <bool do_fork = true>
 		inline static std::unique_ptr<server> create_server(int max_clients, const inet::inet_address& address)
 		{
@@ -1401,8 +1063,14 @@ free_all:
 			bool is_session_running = false;
 		};
 		
-		static std::map<std::string, USER_DATA> users;
 		
+		static std::map<std::string, USER_DATA> users;
+		static MESSAGES incoming;
+		
+		
+		inline server(int max_clients, const inet::inet_address& address)
+				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
+		{ }
 		
 		inline static bool process_request(server_io io, const inet::inet_address& address, server* serv)
 		{
@@ -1436,7 +1104,7 @@ free_all:
 								response.err = HEADER::e_user_already_exists;
 							}
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_set_password:
 					{
@@ -1454,7 +1122,7 @@ free_all:
 								}
 							}
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_set_display_name:
 					{
@@ -1472,18 +1140,19 @@ free_all:
 								response.err = HEADER::e_success;
 							}
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_get_display_name:
 					{
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
+							io.write(response);
+							response.err = HEADER::e_success;
 							io.write(user->second.display_name);
 							::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
-							response.err = HEADER::e_success;
 						}
-						break;
+						return true;
 					}
 					case HEADER::s_begin_session:
 					{
@@ -1495,7 +1164,7 @@ free_all:
 							::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_end_session:
 					{
@@ -1507,27 +1176,47 @@ free_all:
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_send_message:
 					{
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Notify receiver
-							response.err = HEADER::e_success;
+							MESSAGE message;
+							if (io.read(message))
+							{
+								if (user->second.is_session_running)
+								{
+									message.source = std::make_unique<std::string>(user->first);
+									message.source_size = user->first.size();
+									if (incoming.put_message(*message.destination, message))
+										response.err = HEADER::e_success;
+									else
+										response.err = HEADER::e_user_not_found;
+								}
+							}
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_query_incoming:
 					{
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Return top message from incoming queue
-							response.err = HEADER::e_success;
+							if (incoming.message_available(user->first))
+							{
+								response.data_size = sizeof(MESSAGE);
+								response.err = HEADER::e_success;
+								io.write(response);
+								auto msg = incoming.invoke_message(user->first);
+								io.write(msg);
+								return true;
+							}
+							else
+								response.err = HEADER::e_message_not_found;
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_delete_message:
 					{
@@ -1541,7 +1230,7 @@ free_all:
 								response.err = HEADER::e_success;
 							}
 						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_check_online_status:
 					{
@@ -1554,30 +1243,30 @@ free_all:
 								auto target_user = users.find(target);
 								if (target_user != users.end())
 								{
-									io.write(target_user->second.is_session_running);
+									response.data_size = sizeof(bool);
 									response.err = HEADER::e_success;
+									io.write(response);
+									io.write(target_user->second.is_session_running);
+									return true;
 								}
 								else
-								{
 									response.err = HEADER::e_user_not_found;
-								}
 							}
 						}
 						else
-						{
 							response.err = HEADER::e_deranged;
-						}
-						break;
+						return io.write(response);
 					}
 					case HEADER::s_find_users_by_display_name:
 					{
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Return result list
 							response.err = HEADER::e_success;
+							io.write(response);
+							/// TODO: Return result list
 						}
-						break;
+						return true;
 					}
 					case HEADER::s_find_users_by_login:
 					{
@@ -1587,16 +1276,16 @@ free_all:
 							/// TODO: Return result list
 							response.err = HEADER::e_success;
 						}
-						break;
+						return io.write(response);
 					}
 					default:
 					{
 						::syslog(LOG_DEBUG, "Received unknown signal = SIG(%d). Ignoring...", header.sig);
-						return false;
+						return io.write(response);
 					}
 				}
 			}
-			return io.write(response);
+			return false;
 		}
 		
 		inline static bool check_credentials(HEADER& response, const std::string& login, const std::string& password, decltype(users.end())& user)
