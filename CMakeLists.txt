@@ -3,6 +3,8 @@ project(privacy-protection-messenger)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_compile_definitions(VERSION="${PACKAGE_VERSION}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lssl -lcrypto -lpthread")
+
+add_compile_definitions(VERSION="${PACKAGE_VERSION}" VAR_DIRECTORY="${VAR_DIRECTORY}")
 
 add_executable(privacy-protection-messenger main.cpp)

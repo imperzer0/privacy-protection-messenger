@@ -16,12 +16,16 @@
 #  define MESSENGER_NAME "privacy-protection-messenger"
 # endif
 
+# ifndef CERTIFICATE_DIR
+#  define CERTIFICATE_DIR "cert/"
+# endif
+
 # ifndef CERTIFICATE_PATH
-#  define CERTIFICATE_PATH "cert/certificate.pem"
+#  define CERTIFICATE_PATH CERTIFICATE_DIR"certificate.pem"
 # endif
 
 # ifndef PRIVATE_KEY_PATH
-#  define PRIVATE_KEY_PATH "cert/key.pem"
+#  define PRIVATE_KEY_PATH CERTIFICATE_DIR"key.pem"
 # endif
 
 # ifndef COUNTRY
@@ -1036,6 +1040,8 @@ free_all:
 					return nullptr;
 				}
 				
+				::system("mkdir -p \"" CERTIFICATE_DIR "\"");
+				
 				if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
 				{
 					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
@@ -1047,7 +1053,7 @@ free_all:
 			
 			load_users();
 			
-			return std::make_unique<server>(max_clients, address);
+			return std::unique_ptr<server>(new server(max_clients, address));
 		}
 		
 		inline bool run()
@@ -1301,27 +1307,6 @@ free_all:
 			return false;
 		}
 		
-		inline static bool send_message(decltype(users.end())& from_user, const MESSAGE& message)
-		{
-			switch (message.dest_type)
-			{
-				case MESSAGE::dt_user:
-				{
-					
-					return false;
-				}
-				case MESSAGE::dt_chat:
-				{
-					return false;
-				}
-				default:
-				{
-					::syslog(LOG_ERR, "MESSAGE::dest_type = %d is invalid!", message.dest_type);
-					return false;
-				}
-			}
-		}
-		
 		inline static bool assert_credentials(server_io& io, const HEADER& header, HEADER& response)
 		{
 			if (header.login_size > MAX_LOGIN)
@@ -1537,6 +1522,9 @@ free_all:
 			return hash != nullptr;
 		}
 	};
+	
+	std::map<std::string, server::USER_DATA> server::users;
+	MESSAGES server::incoming;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{
