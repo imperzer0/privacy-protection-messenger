@@ -81,7 +81,6 @@ inline static void run_server()
 	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
 	inet::open_port_in_iptables(address.get_port());
 	
-	::syslog(LOG_DEBUG, "Starting server on %s:%hu", address.get_address(), address.get_port());
 	auto serv = msg::server::create_server(max_clients, address);
 	
 	if (serv == nullptr)
