@@ -11,6 +11,8 @@
 # include <sys/syslog.h>
 # include <md5.h>
 # include <sys/stat.h>
+# include <memory>
+# include <sys/wait.h>
 
 # ifndef MESSENGER_NAME
 #  define MESSENGER_NAME "privacy-protection-messenger"
@@ -1005,12 +1007,13 @@ free_all:
 	{
 	public:
 		template <bool do_fork = true>
-		inline static std::unique_ptr<server> create_server(int max_clients, const inet::inet_address& address)
+		inline static server* create_server(int max_clients, const inet::inet_address& address)
 		{
 			bool generate_certs = true;
+			pid_t pid;
 			if constexpr(do_fork)
 			{
-				pid_t pid = ::fork();
+				pid = ::fork();
 				if (pid < 0)
 				{
 					generate_certs = false;
@@ -1050,10 +1053,19 @@ free_all:
 				
 				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
 			}
+			else if constexpr(do_fork)
+			{
+				int loc;
+				::waitpid(pid, &loc, 0);
+				if (WEXITSTATUS(loc))
+				{
+					return nullptr;
+				}
+			};
 			
 			load_users();
 			
-			return std::unique_ptr<server>(new server(max_clients, address));
+			return new server(max_clients, address);
 		}
 		
 		inline bool run()

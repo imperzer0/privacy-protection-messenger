@@ -67,9 +67,9 @@ inline static void daemonize_application()
 
 inline static void sighandle_close_port(int sig)
 {
+	::syslog(LOG_DEBUG, "Closing port %hu in iptables...", address.get_port());
 	inet::close_port_in_iptables(address.get_port());
-	LOG << LOG_COLOR << "Closed port " << address.get_port() << LOG_COLOR << " in iptables." << ENDENTLN;
-	::syslog(LOG_ERR, "SIGTERM happened!!!");
+	::syslog(LOG_ERR, "SIG%s happened!\n  What: %s", ::sigabbrev_np(sig), ::sigdescr_np(sig));
 	::exit(sig);
 }
 
@@ -78,12 +78,24 @@ inline static void run_server()
 	::signal(SIGPIPE, sighandle_close_port);
 	::signal(SIGTERM, sighandle_close_port);
 	
+	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
 	inet::open_port_in_iptables(address.get_port());
-	LOG << LOG_COLOR << "Opened port " << address.get_port() << LOG_COLOR << " in iptables." << ENDENTLN;
 	
+	::syslog(LOG_DEBUG, "Starting server on %s:%hu", address.get_address(), address.get_port());
 	auto serv = msg::server::create_server(max_clients, address);
-	if (serv->run())
-		::syslog(LOG_INFO, "Server is running on %s:%hu.", address.get_address(), address.get_port());
+	
+	if (serv == nullptr)
+	{
+		::syslog(LOG_ERR, "Failed to create certificates.");
+		::exit(-3);
+	}
+	
+	::syslog(LOG_INFO, "Starting server on %s:%hu...", address.get_address(), address.get_port());
+	if (!serv->run())
+	{
+		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
+		::exit(-1);
+	}
 }
 
 int main(int argc, char** argv)
