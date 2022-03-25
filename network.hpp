@@ -138,6 +138,8 @@ namespace msg
 		inline static char* md5crypt(const char* passwd, const char* magic, const char* salt);
 		
 		inline static char* shacrypt(const char* passwd, const char* magic, const char* salt);
+		
+		inline static bool contains(const char* str, const char* substr);
 	}
 	
 	struct HEADER
@@ -153,7 +155,6 @@ namespace msg
 			s_end_session,
 			s_send_message,
 			s_query_incoming,
-			s_delete_message,
 			s_check_online_status,
 			s_find_users_by_display_name,
 			s_find_users_by_login
@@ -539,33 +540,6 @@ namespace msg
 			return false;
 		}
 		
-		inline bool delete_message(const std::string& login, const std::string& password, const MESSAGE& message, std::string& status)
-		{
-			if (is_connected)
-			{
-				if (write(HEADER{HEADER::s_delete_message, login.size(), password.size(), 0, sizeof message}) &&
-					write(login) &&
-					write(password) &&
-					write(message))
-				{
-					HEADER res;
-					if (read(res))
-					{
-						switch (res.err)
-						{
-							case HEADER::e_success:
-							{
-								status = E_SUCCESS;
-								return true;
-							}
-							HANDLE_ERRORS
-						}
-					}
-				}
-			}
-			return false;
-		}
-		
 		inline bool check_online_status(
 				const std::string& login, const std::string& password, const std::string& another_user, bool& online_status, std::string& status)
 		{
@@ -615,7 +589,7 @@ namespace msg
 							{
 								status = E_SUCCESS;
 								size_t amount = 0;
-								if (read(amount) && amount > 0)
+								if (read(amount))
 								{
 									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
 									for (size_t i = 0; i < amount; ++i)
@@ -656,7 +630,7 @@ namespace msg
 							{
 								status = E_SUCCESS;
 								size_t amount = 0;
-								if (read(amount) && amount > 0)
+								if (read(amount))
 								{
 									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
 									for (size_t i = 0; i < amount; ++i)
@@ -1236,20 +1210,6 @@ free_all:
 						}
 						return io.write(response);
 					}
-					case HEADER::s_delete_message:
-					{
-						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
-						{
-							MESSAGE message;
-							if (io.read(message))
-							{
-								/// TODO: Delete message at index message.message_no
-								response.err = HEADER::e_success;
-							}
-						}
-						return io.write(response);
-					}
 					case HEADER::s_check_online_status:
 					{
 						decltype(users.end()) user;
@@ -1280,9 +1240,28 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							response.err = HEADER::e_success;
-							io.write(response);
-							/// TODO: Return result list
+							std::string key;
+							if (read_data(io, header, key))
+							{
+								response.err = HEADER::e_success;
+								io.write(response);
+								
+								std::list<std::string> matches;
+								for (const auto& u: users)
+								{
+									if (matches.size() > MAX_USER_ENTRIES_AMOUNT) break;
+									if (u.second.display_name.size() >= key.size() &&
+										__detail__::contains(u.second.display_name.c_str(), key.c_str()))
+										matches.push_back(u.first);
+								}
+								
+								io.write(matches.size());
+								for (auto& m: matches)
+									io.write(m);
+								
+								return true;
+							}
+							else return false;
 						}
 						return true;
 					}
@@ -1291,10 +1270,30 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Return result list
-							response.err = HEADER::e_success;
+							std::string key;
+							if (read_data(io, header, key))
+							{
+								response.err = HEADER::e_success;
+								io.write(response);
+								
+								std::list<std::string> matches;
+								for (const auto& u: users)
+								{
+									if (matches.size() > MAX_USER_ENTRIES_AMOUNT) break;
+									if (u.first.size() >= key.size() &&
+										__detail__::contains(u.first.c_str(), key.c_str()))
+										matches.push_back(u.first);
+								}
+								
+								io.write(matches.size());
+								for (auto& m: matches)
+									io.write(m);
+								
+								return true;
+							}
+							else return false;
 						}
-						return io.write(response);
+						return true;
 					}
 					default:
 					{
@@ -2054,6 +2053,16 @@ err:
 			OPENSSL_free(s_bytes);
 			OPENSSL_free(ascii_passwd);
 			return nullptr;
+		}
+		
+		inline static bool contains(const char* str, const char* substr)
+		{
+			for (; *str && *substr; ++str)
+			{
+				if (*str == *substr)
+					++substr;
+			}
+			return *substr == 0;
 		}
 	}
 }
