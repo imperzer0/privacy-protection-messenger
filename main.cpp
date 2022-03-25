@@ -12,7 +12,7 @@
 
 static bool debug = false;
 static char* appname = nullptr;
-static char* server_address = "0.0.0.0:" TO_STR(DEFAULT_PORT);
+static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
 static int max_clients = 10;
 static constexpr const char* s_options = "m:l:p:a:c:dv";
 const option l_options[]{
@@ -65,9 +65,22 @@ inline static void daemonize_application()
 	::openlog(appname, LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
 }
 
+inline static void sighandle_close_port(int sig)
+{
+	inet::close_port_in_iptables(address.get_port());
+	LOG << LOG_COLOR << "Closed port " << address.get_port() << LOG_COLOR << " in iptables." << ENDENTLN;
+	::syslog(LOG_ERR, "SIGTERM happened!!!");
+	::exit(sig);
+}
+
 inline static void run_server()
 {
-	auto address = inet::inet_address::from_ipv4(server_address, DEFAULT_PORT);
+	::signal(SIGPIPE, sighandle_close_port);
+	::signal(SIGTERM, sighandle_close_port);
+	
+	inet::open_port_in_iptables(address.get_port());
+	LOG << LOG_COLOR << "Opened port " << address.get_port() << LOG_COLOR << " in iptables." << ENDENTLN;
+	
 	auto serv = msg::server::create_server(max_clients, address);
 	if (serv->run())
 		::syslog(LOG_INFO, "Server is running on %s:%hu.", address.get_address(), address.get_port());
@@ -105,7 +118,7 @@ int main(int argc, char** argv)
 			
 			case 'a':
 			{
-				::server_address = ::strdup(optarg);
+				::address = inet::inet_address::from_ipv4(optarg, DEFAULT_PORT);
 				break;
 			}
 			
