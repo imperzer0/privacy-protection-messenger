@@ -12,15 +12,31 @@
 
 static bool debug = false;
 static char* appname = nullptr;
-static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
+
 static int max_clients = 10;
-static constexpr const char* s_options = "m:l:p:a:c:dv";
+
+static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
+
+static msg::HEADER::signal operation_signal = msg::HEADER::s_zero;
+static char* login;
+static char* password;
+static char* metadata;
+static int datapipe = -1;
+
+static constexpr const char* s_options = "m:a:o:l:p:M:P:c:dv?";
 const option l_options[]{
 		{"mode",        required_argument, nullptr, 'm'},
+		
+		{"address",     required_argument, nullptr, 'a'},
+		
+		{"operation",   required_argument, nullptr, 'o'},
 		{"login",       required_argument, nullptr, 'l'},
 		{"password",    required_argument, nullptr, 'p'},
-		{"address",     required_argument, nullptr, 'a'},
+		{"metadata",    required_argument, nullptr, 'M'},
+		{"datapipe",    required_argument, nullptr, 'P'},
+		
 		{"max-clients", required_argument, nullptr, 'c'},
+		
 		{"debug",       required_argument, nullptr, 'd'},
 		{"version",     required_argument, nullptr, 'v'},
 		{"help",        required_argument, nullptr, '?'},
@@ -32,17 +48,23 @@ inline static void help(int code)
 	::printf(COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET "\n" COLOR_YELLOW, appname);
 	::printf("Options:\n");
 	::printf("m  --mode|-m         CLIENT/SERVER  client or server mode\n");
-	::printf(" For CLIENT mode\n");
-	::printf("m  --address|-a      <IP>           server ip address\n");
-	::printf("m  --login|-l        <login>        login\n");
-	::printf("m  --password|-p     <password>     password\n");
-	::printf(" For SERVER mode\n");
-	::printf("o  --address|-a      <IP>           server ip address\n");
-	::printf("o  --max-clients|-c  <amount>       maximum clients to process at once\n");
-	::printf(" General\n");
-	::printf("o  --debug|-d                       enable debug mode\n");
-	::printf("o  --version|-v                     print application version\n");
-	::printf("o  --help|-?                        print help\n");
+	
+	::printf("\n For CLIENT mode\n");
+	::printf("m  --address|-a      <IP>         server ip address\n");
+	::printf("m  --operation|-o    <operation>  perform operation\n");
+	::printf("m  --login|-l        <login>      login\n");
+	::printf("m  --password|-p     <password>   password\n");
+	::printf("o  --metadata|-M     <data>       undefined purpose data\n");
+	::printf("o  --datapipe|-P     <pipedes>    message data transfer pipe\n");
+	
+	::printf("\n For SERVER mode\n");
+	::printf("o  --address|-a      <IP>      server ip address\n");
+	::printf("o  --max-clients|-c  <amount>  maximum clients to process at once\n");
+	
+	::printf("\n General\n");
+	::printf("o  --debug|-D    enable debug mode\n");
+	::printf("o  --version|-v  print application version\n");
+	::printf("o  --help|-?     print help\n");
 	::printf(COLOR_CYAN "Designation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
 	
 	::exit(code);
@@ -100,7 +122,6 @@ inline static void run_server()
 int main(int argc, char** argv)
 {
 	appname = argv[0];
-	char* login, * password;
 	bool is_server = true;
 	
 	int opt, longid;
@@ -115,21 +136,39 @@ int main(int argc, char** argv)
 				break;
 			}
 			
+			case 'a':
+			{
+				::address = inet::inet_address::from_ipv4(optarg, DEFAULT_PORT);
+				break;
+			}
+			
 			case 'l':
 			{
-				login = ::strdup(optarg);
+				::login = ::strdup(optarg);
 				break;
 			}
 			
 			case 'p':
 			{
-				password = ::strdup(optarg);
+				::password = ::strdup(optarg);
 				break;
 			}
 			
-			case 'a':
+			case 'M':
 			{
-				::address = inet::inet_address::from_ipv4(optarg, DEFAULT_PORT);
+				::metadata = ::strdup(optarg);
+				break;
+			}
+			
+			case 'P':
+			{
+				::datapipe = ::strtol(optarg, nullptr, 10);
+				break;
+			}
+			
+			case 'o':
+			{
+				::operation_signal = msg::HEADER::signal_from_name(optarg);
 				break;
 			}
 			
@@ -172,7 +211,87 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-	
+		msg::client cli(::address);
+		std::string status;
+		switch (::operation_signal)
+		{
+			case msg::HEADER::s_register_user:
+				cli.register_user(::login, ::password, ::metadata, status);
+				break;
+			case msg::HEADER::s_set_password:
+				cli.set_password(::login, ::password, ::metadata, status);
+				break;
+			case msg::HEADER::s_set_display_name:
+				cli.set_display_name(::login, ::password, ::metadata, status);
+				break;
+			case msg::HEADER::s_get_display_name:
+			{
+				std::string result;
+				cli.get_display_name(::login, ::password, result, status);
+				std::cout << result << "\n";
+			}
+				break;
+			case msg::HEADER::s_begin_session:
+				cli.begin_session(::login, ::password, status);
+				break;
+			case msg::HEADER::s_end_session:
+				cli.end_session(::login, ::password, status);
+				break;
+			case msg::HEADER::s_send_message:
+			{
+				msg::MESSAGE msg;
+				msg.destination = std::make_unique<std::string>(::metadata);
+				msg.destination_size = msg.destination->size();
+				
+				::read(::datapipe, &msg.data_size, sizeof msg.data_size);
+				msg.data = std::make_unique<std::vector<char>>(msg.data_size, 0);
+				if (msg.data_size > 0)::read(::datapipe, msg.data->data(), msg.data_size);
+				
+				cli.send_message(::login, ::password, msg, status);
+			}
+				break;
+			case msg::HEADER::s_query_incoming:
+			{
+				msg::MESSAGE msg;
+				cli.query_incoming(::login, ::password, msg, status);
+				if (msg.source && !msg.source->empty())
+					std::cout << msg.source->size() << " " << msg.source << "\n";
+				else
+					std::cout << "0\n";
+				::write(::datapipe, &msg.data_size, sizeof msg.data_size);
+				if (msg.data && !msg.data->empty()) ::write(::datapipe, msg.data->data(), sizeof msg.data_size);
+			}
+				break;
+			case msg::HEADER::s_check_online_status:
+			{
+				bool online = false;
+				cli.check_online_status(::login, ::password, ::metadata, online, status);
+				std::cout << online << "\n";
+			}
+				break;
+			case msg::HEADER::s_find_users_by_display_name:
+			{
+				std::list<std::string> list;
+				cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
+				std::cout << list.size() << "\n";
+				for (auto&& i: list)
+					std::cout << i << "\n";
+			}
+				break;
+			case msg::HEADER::s_find_users_by_login:
+			{
+				std::list<std::string> list;
+				cli.find_users_by_login(::login, ::password, ::metadata, list, status);
+				std::cout << list.size() << "\n";
+				for (auto&& i: list)
+					std::cout << i << "\n";
+			}
+				break;
+			default:
+				std::clog << "Invalid operation!\n";
+				::exit(-4);
+		}
+		std::clog << status << "\n";
 	}
 	
 	return 0;

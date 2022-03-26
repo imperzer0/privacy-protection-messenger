@@ -13,6 +13,7 @@
 # include <sys/stat.h>
 # include <memory>
 # include <sys/wait.h>
+#include <vector>
 
 # ifndef MESSENGER_NAME
 #  define MESSENGER_NAME "privacy-protection-messenger"
@@ -141,6 +142,9 @@ namespace msg
 		
 		inline static bool contains(const char* str, const char* substr);
 	}
+
+
+#define SIGNAL_NAME(sig) #sig
 	
 	struct HEADER
 	{
@@ -160,6 +164,60 @@ namespace msg
 			s_find_users_by_login
 		};
 		signal sig = s_zero;
+		
+		inline static const char* signal_to_name(signal sig)
+		{
+			if (sig == s_register_user)
+				return SIGNAL_NAME(s_register_user);
+			else if (sig == s_set_password)
+				return SIGNAL_NAME(s_set_password);
+			else if (sig == s_set_display_name)
+				return SIGNAL_NAME(s_set_display_name);
+			else if (sig == s_get_display_name)
+				return SIGNAL_NAME(s_get_display_name);
+			else if (sig == s_begin_session)
+				return SIGNAL_NAME(s_begin_session);
+			else if (sig == s_end_session)
+				return SIGNAL_NAME(s_end_session);
+			else if (sig == s_send_message)
+				return SIGNAL_NAME(s_send_message);
+			else if (sig == s_query_incoming)
+				return SIGNAL_NAME(s_query_incoming);
+			else if (sig == s_check_online_status)
+				return SIGNAL_NAME(s_check_online_status);
+			else if (sig == s_find_users_by_display_name)
+				return SIGNAL_NAME(s_find_users_by_display_name);
+			else if (sig == s_find_users_by_login)
+				return SIGNAL_NAME(s_find_users_by_login);
+			else return SIGNAL_NAME(s_zero);
+		}
+		
+		inline static signal signal_from_name(const std::string& name)
+		{
+			if (name == SIGNAL_NAME(s_register_user))
+				return s_register_user;
+			else if (name == SIGNAL_NAME(s_set_password))
+				return s_set_password;
+			else if (name == SIGNAL_NAME(s_set_display_name))
+				return s_set_display_name;
+			else if (name == SIGNAL_NAME(s_get_display_name))
+				return s_get_display_name;
+			else if (name == SIGNAL_NAME(s_begin_session))
+				return s_begin_session;
+			else if (name == SIGNAL_NAME(s_end_session))
+				return s_end_session;
+			else if (name == SIGNAL_NAME(s_send_message))
+				return s_send_message;
+			else if (name == SIGNAL_NAME(s_query_incoming))
+				return s_query_incoming;
+			else if (name == SIGNAL_NAME(s_check_online_status))
+				return s_check_online_status;
+			else if (name == SIGNAL_NAME(s_find_users_by_display_name))
+				return s_find_users_by_display_name;
+			else if (name == SIGNAL_NAME(s_find_users_by_login))
+				return s_find_users_by_login;
+			else return s_zero;
+		}
 		
 		size_t login_size = 0;
 		size_t password_size = 0;
@@ -186,17 +244,9 @@ namespace msg
 	
 	struct MESSAGE
 	{
-		enum destination_type : int
-		{
-			dt_zero = 0,
-			dt_user,
-			dt_chat
-		};
-		destination_type dest_type = dt_zero;
-		
 		std::unique_ptr<std::string> source = nullptr;
 		std::unique_ptr<std::string> destination = nullptr;
-		std::unique_ptr<std::string> data = nullptr;
+		std::unique_ptr<std::vector<char>> data = nullptr;
 		
 		size_t source_size = 0;
 		size_t destination_size = 0;
@@ -206,10 +256,9 @@ namespace msg
 		MESSAGE() = default;
 		
 		MESSAGE(const MESSAGE& msg)
-				: dest_type(msg.dest_type),
-				  source(std::make_unique<std::string>(*msg.source)),
-				  destination(std::make_unique<std::string>(*msg.destination)),
-				  data(std::make_unique<std::string>(*msg.data)),
+				: source(msg.source ? std::make_unique<std::string>(*msg.source) : nullptr),
+				  destination(msg.destination ? std::make_unique<std::string>(*msg.destination) : nullptr),
+				  data(msg.data ? std::make_unique<std::vector<char>>(*msg.data) : nullptr),
 				  source_size(msg.source->size()),
 				  destination_size(msg.destination->size()),
 				  data_size(msg.data->size()),
@@ -666,7 +715,7 @@ namespace msg
 					read(data, message.data_size) == message.data_size)
 				{
 					message.source = std::make_unique<std::string>(source);
-					message.data = std::make_unique<std::string>(data);
+					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
 					delete[] source;
 					delete[] data;
 					return true;
@@ -712,8 +761,8 @@ namespace msg
 				message.destination_size = message.destination->size();
 				message.data_size = message.data->size();
 				if (write(&message, sizeof message) == sizeof message &&
-					write(message.destination->c_str(), message.destination->size()) == message.destination->size() &&
-					write(message.data->c_str(), message.data->size()) == message.data->size())
+					write(message.destination->c_str(), message.destination_size) == message.destination_size &&
+					write(message.data->data(), message.data_size) == message.data_size)
 					return true;
 			}
 			return false;
@@ -879,7 +928,7 @@ free_all:
 					read(data, message.data_size) == message.data_size)
 				{
 					message.destination = std::make_unique<std::string>(destination);
-					message.data = std::make_unique<std::string>(data);
+					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
 					delete[] destination;
 					delete[] data;
 					return true;
@@ -908,7 +957,7 @@ free_all:
 				message.data_size = message.data->size();
 				if (write(&message, sizeof message) == sizeof message &&
 					write(message.source->c_str(), message.source->size()) == message.source->size() &&
-					write(message.data->c_str(), message.data->size()) == message.source->size())
+					write(message.data->data(), message.data_size) == message.data_size)
 					return true;
 			}
 			return false;
