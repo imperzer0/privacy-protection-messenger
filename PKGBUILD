@@ -9,7 +9,7 @@ license=('GPL')
 depends=("openssl" "iptables-nft")
 makedepends=("cmake>=3.0" "inet-comm>=3.5-0" "openssl")
 
-libfiles=("CMakeLists.txt" "main.cpp" "network.hpp" "$pkgname.conf" "$pkgname.service")
+libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
 
 for libfile in ${libfiles[@]}
 {
@@ -34,5 +34,5 @@ package()
 {
 	install -Dm755 $pkgname "$pkgdir/usr/bin/$pkgname"
 	install -Dm644 $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
-	mkdir -pm644 $var_directory
+	mkdir -pm644 $pkgdir$var_directory
 }
