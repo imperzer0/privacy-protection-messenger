@@ -37,16 +37,17 @@ const option l_options[]{
 		
 		{"max-clients", required_argument, nullptr, 'c'},
 		
-		{"debug",       required_argument, nullptr, 'd'},
-		{"version",     required_argument, nullptr, 'v'},
-		{"help",        required_argument, nullptr, '?'},
+		{"debug",       no_argument,       nullptr, 'd'},
+		{"version",     no_argument,       nullptr, 'v'},
+		{"help",        no_argument,       nullptr, '?'},
 		{nullptr}
 };
 
 inline static void help(int code)
 {
-	::printf(COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET "\n" COLOR_YELLOW, appname);
-	::printf("Options:\n");
+	::printf(COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET " [OPTIONS]\n" COLOR_YELLOW, appname);
+	
+	::printf("\nOptions:\n");
 	::printf("m  --mode|-m         CLIENT/SERVER  client or server mode\n");
 	
 	::printf("\n For CLIENT mode\n");
@@ -65,7 +66,7 @@ inline static void help(int code)
 	::printf("o  --debug|-D    enable debug mode\n");
 	::printf("o  --version|-v  print application version\n");
 	::printf("o  --help|-?     print help\n");
-	::printf(COLOR_CYAN "Designation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
+	::printf(COLOR_CYAN "\nDesignation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
 	
 	::exit(code);
 }
@@ -122,6 +123,7 @@ inline static void run_server()
 int main(int argc, char** argv)
 {
 	appname = argv[0];
+	if (argc <= 1) help(0);
 	bool is_server = true;
 	
 	int opt, longid;
