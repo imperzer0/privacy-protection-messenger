@@ -261,7 +261,7 @@ int main(int argc, char** argv)
 				else
 					std::cout << "0\n";
 				::write(::datapipe, &msg.data_size, sizeof msg.data_size);
-				if (msg.data && !msg.data->empty()) ::write(::datapipe, msg.data->data(), sizeof msg.data_size);
+				if (msg.data && !msg.data->empty()) ::write(::datapipe, msg.data->data(), msg.data_size);
 			}
 				break;
 			case msg::HEADER::s_check_online_status:

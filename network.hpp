@@ -1245,17 +1245,20 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							if (incoming.message_available(user->first))
+							if (user->second.is_session_running)
 							{
-								response.data_size = sizeof(MESSAGE);
-								response.err = HEADER::e_success;
-								io.write(response);
-								auto msg = incoming.invoke_message(user->first);
-								io.write(msg);
-								return true;
+								if (incoming.message_available(user->first))
+								{
+									response.data_size = sizeof(MESSAGE);
+									response.err = HEADER::e_success;
+									io.write(response);
+									auto msg = incoming.invoke_message(user->first);
+									io.write(msg);
+									return true;
+								}
+								else
+									response.err = HEADER::e_message_not_found;
 							}
-							else
-								response.err = HEADER::e_message_not_found;
 						}
 						return io.write(response);
 					}
@@ -1280,8 +1283,6 @@ free_all:
 									response.err = HEADER::e_user_not_found;
 							}
 						}
-						else
-							response.err = HEADER::e_deranged;
 						return io.write(response);
 					}
 					case HEADER::s_find_users_by_display_name:
