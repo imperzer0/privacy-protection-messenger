@@ -327,12 +327,6 @@ namespace msg
 	class client : public inet::client
 	{
 	public:
-		inline explicit client(
-				const inet::inet_address& server_address, SSL* ssl = nullptr, SSL_CTX* ctx = nullptr,
-				const std::string& cert_file = "", const std::string& key_file = "")
-				: inet::client(server_address, true, cert_file, key_file)
-		{ }
-		
 		template <bool do_fork = true>
 		inline static client* create_client(const inet::inet_address& server_address)
 		{
@@ -381,7 +375,7 @@ namespace msg
 				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
 			}
 			
-			return new client(server_address, nullptr, nullptr, CERTIFICATE_PATH, PRIVATE_KEY_PATH);
+			return new client(server_address, CERTIFICATE_PATH, PRIVATE_KEY_PATH);
 		}
 		
 		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
@@ -905,6 +899,12 @@ free_all:
 	
 	private:
 		bool is_connected = false;
+		
+		inline explicit client(
+				const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
+				: inet::client(server_address, true, cert_file, key_file)
+		{ }
+		
 	};
 	
 	class server_io : public inet::inet_io

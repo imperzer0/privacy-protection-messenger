@@ -213,7 +213,7 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		msg::client cli(::address);
+		auto cli = *msg::client::create_client(::address);
 		std::string status;
 		switch (::operation_signal)
 		{
