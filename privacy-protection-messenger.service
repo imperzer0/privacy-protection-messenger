@@ -1,12 +1,12 @@
 [Unit]
-Description=linux-file-server server daemon
+Description=privacy-protection-messenger server daemon
 After=network.target
 StartLimitIntervalSec=10
 StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/linux-file-server-server --new-style-daemon --config /etc/linux-file-server-server.conf
+ExecStart=/usr/bin/linux-file-server-server --mode server
 Restart=always
 RestartSec=1
 
