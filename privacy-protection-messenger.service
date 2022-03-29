@@ -6,7 +6,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/linux-file-server-server --mode server
+ExecStart=/usr/bin/privacy-protection-messenger --mode server
 Restart=always
 RestartSec=1
 
