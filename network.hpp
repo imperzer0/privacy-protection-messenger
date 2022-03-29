@@ -323,6 +323,65 @@ namespace msg
                             return false;                   \
                         }
 	
+	template <bool do_fork = true>
+	inline static bool generate_certs()
+	{
+		bool generate_certs = true;
+		pid_t pid;
+		if constexpr(do_fork)
+		{
+			pid = ::fork();
+			if (pid < 0)
+			{
+				generate_certs = false;
+				ERROR("Fork failed.");
+			}
+			else if (pid > 0)
+				generate_certs = false;
+			else
+				generate_certs = true;
+		}
+		
+		if (generate_certs)
+		{
+			std::string error;
+			
+			auto key = inet::generate_key(error);
+			if (!key)
+			{
+				LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
+				return false;
+			}
+			
+			auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+			if (!x509)
+			{
+				LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
+				return false;
+			}
+			
+			::system("mkdir -p \"" CERTIFICATE_DIR "\"");
+			
+			if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
+			{
+				LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
+				return false;
+			}
+			
+			if constexpr(do_fork) ::exit(EXIT_SUCCESS);
+		}
+		else if constexpr(do_fork)
+		{
+			int loc;
+			::waitpid(pid, &loc, 0);
+			if (WEXITSTATUS(loc))
+			{
+				return false;
+			}
+		}
+		
+		return true;
+	}
 	
 	class client : public inet::client
 	{
@@ -330,50 +389,8 @@ namespace msg
 		template <bool do_fork = true>
 		inline static client* create_client(const inet::inet_address& server_address)
 		{
-			bool generate_certs = true;
-			if constexpr(do_fork)
-			{
-				pid_t pid = ::fork();
-				if (pid < 0)
-				{
-					generate_certs = false;
-					ERROR("Fork failed.");
-				}
-				else if (pid > 0)
-					generate_certs = false;
-				else
-					generate_certs = true;
-			}
-			
-			if (generate_certs)
-			{
-				std::string error;
-				
-				::system((std::string("mkdir -p \"") + work_dir + "\"").c_str());
-				::chdir(work_dir);
-				
-				auto key = inet::generate_key(error);
-				if (!key)
-				{
-					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
-				if (!x509)
-				{
-					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
-				{
-					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
-			}
+			if (!generate_certs<do_fork>())
+				return nullptr;
 			
 			return new client(server_address, CERTIFICATE_PATH, PRIVATE_KEY_PATH);
 		}
@@ -1032,59 +1049,8 @@ free_all:
 		template <bool do_fork = true>
 		inline static server* create_server(int max_clients, const inet::inet_address& address)
 		{
-			bool generate_certs = true;
-			pid_t pid;
-			if constexpr(do_fork)
-			{
-				pid = ::fork();
-				if (pid < 0)
-				{
-					generate_certs = false;
-					ERROR("Fork failed.");
-				}
-				else if (pid > 0)
-					generate_certs = false;
-				else
-					generate_certs = true;
-			}
-			
-			if (generate_certs)
-			{
-				std::string error;
-				
-				auto key = inet::generate_key(error);
-				if (!key)
-				{
-					LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
-				if (!x509)
-				{
-					LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				::system("mkdir -p \"" CERTIFICATE_DIR "\"");
-				
-				if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
-				{
-					LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
-					return nullptr;
-				}
-				
-				if constexpr(do_fork) ::exit(EXIT_SUCCESS);
-			}
-			else if constexpr(do_fork)
-			{
-				int loc;
-				::waitpid(pid, &loc, 0);
-				if (WEXITSTATUS(loc))
-				{
-					return nullptr;
-				}
-			};
+			if (!generate_certs<do_fork>())
+				return nullptr;
 			
 			load_users();
 			

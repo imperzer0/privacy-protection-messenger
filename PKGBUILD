@@ -1,7 +1,7 @@
 pkgname="privacy-protection-messenger"
 epoch=1
 pkgver=0
-pkgrel=1
+pkgrel=2
 pkgdesc="secure SSL messenger"
 arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
