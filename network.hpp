@@ -397,55 +397,58 @@ namespace msg
 		
 		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
-			if (write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()}) &&
-				write(login) &&
-				write(password) &&
-				write(display_name))
+			write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()});
+			write(login);
+			write(password);
+			write(display_name);
+			HEADER res;
+			if (read(res))
 			{
-				HEADER res;
-				if (read(res))
+				switch (res.err)
 				{
-					switch (res.err)
+					case HEADER::e_success:
 					{
-						case HEADER::e_success:
-						{
-							status = E_SUCCESS;
-							return true;
-						}
-						HANDLE_ERRORS
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
+			
 			return false;
 		}
 		
-		inline bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
+		inline
+		
+		bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
 		{
-			if (write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()}) &&
-				write(login) &&
-				write(password) &&
-				write(new_password))
+			write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()});
+			write(login);
+			write(password);
+			write(new_password);
+			HEADER res;
+			if (read(res))
 			{
-				HEADER res;
-				if (read(res))
+				switch (res.err)
 				{
-					switch (res.err)
+					case HEADER::e_success:
 					{
-						case HEADER::e_success:
-						{
-							status = E_SUCCESS;
-							return true;
-						}
-						HANDLE_ERRORS
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
+			
 			return false;
 		}
 		
 		inline bool set_display_name(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
 			write(HEADER{HEADER::s_set_display_name, login.size(), password.size(), display_name.size()});
+			write(login);
+			write(password);
+			write(display_name);
 			HEADER res;
 			if (read(res))
 			{
@@ -464,74 +467,65 @@ namespace msg
 		
 		inline bool get_display_name(const std::string& login, const std::string& password, std::string& display_name, std::string& status)
 		{
-			if (write(HEADER{HEADER::s_get_display_name, login.size(), password.size()}) &&
-				write(login) &&
-				write(password))
+			write(HEADER{HEADER::s_get_display_name, login.size(), password.size()});
+			write(login);
+			write(password);
+			HEADER res;
+			if (read(res))
 			{
-				HEADER res;
-				if (read(res))
+				switch (res.err)
 				{
-					switch (res.err)
+					case HEADER::e_success:
 					{
-						case HEADER::e_success:
-						{
-							status = E_SUCCESS;
-							read(display_name);
-							return true;
-						}
-						HANDLE_ERRORS
+						status = E_SUCCESS;
+						read(display_name);
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
+			
 			return false;
 		}
 		
 		inline bool begin_session(const std::string& login, const std::string& password, std::string& status)
 		{
-			if (write(HEADER{HEADER::s_begin_session, login.size(), password.size()}) &&
-				write(login) &&
-				write(password))
+			write(HEADER{HEADER::s_begin_session, login.size(), password.size()});
+			write(login);
+			write(password);
+			HEADER res;
+			if (read(res))
 			{
-				HEADER res;
-				if (read(res))
+				switch (res.err)
 				{
-					switch (res.err)
+					case HEADER::e_success:
 					{
-						case HEADER::e_success:
-						{
-							is_connected = true;
-							status = E_SUCCESS;
-							return true;
-						}
-						HANDLE_ERRORS
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
+			
 			return false;
 		}
 		
 		inline bool end_session(const std::string& login, const std::string& password, std::string& status)
 		{
-			if (is_connected)
+			write(HEADER{HEADER::s_end_session, login.size(), password.size()});
+			write(login);
+			write(password);
+			HEADER res;
+			if (read(res))
 			{
-				if (write(HEADER{HEADER::s_end_session, login.size(), password.size()}) &&
-					write(login) &&
-					write(password))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
-						{
-							case HEADER::e_success:
-							{
-								status = E_SUCCESS;
-								is_connected = false;
-								return true;
-							}
-							HANDLE_ERRORS
-						}
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -540,30 +534,25 @@ namespace msg
 		inline bool send_message(
 				const std::string& login, const std::string& password, const MESSAGE& message, std::string& status)
 		{
-			if (is_connected)
+			size_t message_size = sizeof message;
+			if (message.destination) message_size += message.destination->size();
+			if (message.data) message_size += message.data->size();
+			
+			write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size});
+			write(login);
+			write(password);
+			write(message);
+			HEADER res;
+			if (read(res))
 			{
-				size_t message_size = sizeof message;
-				if (message.destination) message_size += message.destination->size();
-				if (message.data) message_size += message.data->size();
-				
-				if (write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size}) &&
-					write(login) &&
-					write(password) &&
-					write(message))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
-						{
-							case HEADER::e_success:
-							{
-								status = E_SUCCESS;
-								return true;
-							}
-							HANDLE_ERRORS
-						}
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -572,29 +561,24 @@ namespace msg
 		inline bool query_incoming(
 				const std::string& login, const std::string& password, MESSAGE& message, std::string& status)
 		{
-			if (is_connected)
+			size_t message_size = sizeof message;
+			if (message.destination) message_size += message.destination->size();
+			if (message.data) message_size += message.data->size();
+			
+			write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size});
+			write(login);
+			write(password);
+			HEADER res;
+			if (read(res))
 			{
-				size_t message_size = sizeof message;
-				if (message.destination) message_size += message.destination->size();
-				if (message.data) message_size += message.data->size();
-				
-				if (write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size}) &&
-					write(login) &&
-					write(password))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
-						{
-							case HEADER::e_success:
-							{
-								status = E_SUCCESS;
-								return read(message);
-							}
-							HANDLE_ERRORS
-						}
+						status = E_SUCCESS;
+						return read(message);
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -603,27 +587,22 @@ namespace msg
 		inline bool check_online_status(
 				const std::string& login, const std::string& password, const std::string& another_user, bool& online_status, std::string& status)
 		{
-			if (is_connected)
+			write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()});
+			write(login);
+			write(password);
+			write(another_user);
+			HEADER res;
+			if (read(res))
 			{
-				if (write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()}) &&
-					write(login) &&
-					write(password) &&
-					write(another_user))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
-						{
-							case HEADER::e_success:
-							{
-								read(online_status);
-								status = E_SUCCESS;
-								return true;
-							}
-							HANDLE_ERRORS
-						}
+						read(online_status);
+						status = E_SUCCESS;
+						return true;
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -633,38 +612,33 @@ namespace msg
 				const std::string& login, const std::string& password, const std::string& display_name, std::list<std::string>& list,
 				std::string& status)
 		{
-			if (is_connected)
+			write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()});
+			write(login);
+			write(password);
+			write(display_name);
+			HEADER res;
+			if (read(res))
 			{
-				if (write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()}) &&
-					write(login) &&
-					write(password) &&
-					write(display_name))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
+						status = E_SUCCESS;
+						size_t amount = 0;
+						if (read(amount))
 						{
-							case HEADER::e_success:
+							amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
+							for (size_t i = 0; i < amount; ++i)
 							{
-								status = E_SUCCESS;
-								size_t amount = 0;
-								if (read(amount))
-								{
-									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
-									for (size_t i = 0; i < amount; ++i)
-									{
-										std::string entry;
-										if (!read(entry)) return false;
-										list.push_back(entry);
-									}
-									return true;
-								}
-								return false;
+								std::string entry;
+								if (!read(entry)) return false;
+								list.push_back(entry);
 							}
-							HANDLE_ERRORS
+							return true;
 						}
+						return false;
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -674,38 +648,33 @@ namespace msg
 				const std::string& login, const std::string& password, const std::string& another_user, std::list<std::string>& list,
 				std::string& status)
 		{
-			if (is_connected)
+			write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()});
+			write(login);
+			write(password);
+			write(another_user);
+			HEADER res;
+			if (read(res))
 			{
-				if (write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()}) &&
-					write(login) &&
-					write(password) &&
-					write(another_user))
+				switch (res.err)
 				{
-					HEADER res;
-					if (read(res))
+					case HEADER::e_success:
 					{
-						switch (res.err)
+						status = E_SUCCESS;
+						size_t amount = 0;
+						if (read(amount))
 						{
-							case HEADER::e_success:
+							amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
+							for (size_t i = 0; i < amount; ++i)
 							{
-								status = E_SUCCESS;
-								size_t amount = 0;
-								if (read(amount))
-								{
-									amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
-									for (size_t i = 0; i < amount; ++i)
-									{
-										std::string entry;
-										if (!read(entry)) return false;
-										list.push_back(entry);
-									}
-									return true;
-								}
-								return false;
+								std::string entry;
+								if (!read(entry)) return false;
+								list.push_back(entry);
 							}
-							HANDLE_ERRORS
+							return true;
 						}
+						return false;
 					}
+					HANDLE_ERRORS
 				}
 			}
 			return false;
@@ -754,15 +723,19 @@ namespace msg
 			return -1;
 		}
 		
-		ssize_t read(void* data, size_t size) override
+		ssize_t read(void* data, size_t size)
+		
+		override
 		{
-			return inet_io::read(data, size);
+			return
+					inet_io::read(
+							data, size
+					);
 		}
 		
-		template <typename T>
-		inline bool write(const T& fixed_size_obj)
+		inline bool write(const HEADER& header)
 		{
-			return write(&fixed_size_obj, sizeof fixed_size_obj) == sizeof fixed_size_obj;
+			return write(&header, sizeof header) == sizeof header;
 		}
 		
 		inline bool write(MESSAGE message)
@@ -786,7 +759,7 @@ namespace msg
 		
 		ssize_t write(const void* data, int size) override
 		{
-			return inet_io::write(data, size);
+			return inet::client::write(data, size);
 		}
 		
 		inline static int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
@@ -915,7 +888,6 @@ free_all:
 	
 	
 	private:
-		bool is_connected = false;
 		
 		inline explicit client(
 				const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
@@ -1065,6 +1037,7 @@ free_all:
 	private:
 		struct USER_DATA
 		{
+			std::string salt;
 			std::string password;
 			std::string display_name;
 			bool is_session_running = false;
@@ -1101,7 +1074,9 @@ free_all:
 							if (users.find(login_str) == users.end())
 							{
 								::syslog(LOG_DEBUG, "Registering user \"%s\"...", login.c_str());
-								users[login_str] = {password, display_name};
+								auto salt = std::string();
+								compute_passwd_hash(password, salt);
+								users[login_str] = {salt, password, display_name};
 								save_users();
 								response.err = HEADER::e_success;
 							}
@@ -1118,15 +1093,12 @@ free_all:
 						std::string data;
 						if (read_data(io, header, data))
 						{
-							if (compute_passwd_hash(data))
+							decltype(users.end()) user;
+							if (check_credentials(response, login, password, user))
 							{
-								decltype(users.end()) user;
-								if (check_credentials(response, login, password, user))
-								{
-									user->second.password = data;
-									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
-									response.err = HEADER::e_success;
-								}
+								user->second.password = data;
+								::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
+								response.err = HEADER::e_success;
 							}
 						}
 						return io.write(response);
@@ -1321,14 +1293,17 @@ free_all:
 			return false;
 		}
 		
-		inline static bool check_credentials(HEADER& response, const std::string& login, const std::string& password, decltype(users.end())& user)
+		inline static bool check_credentials(HEADER& response, const std::string& login, std::string& password, decltype(users.end())& user)
 		{
 			user = users.find(login);
 			if (user != users.end())
+			{
+				compute_passwd_hash(password, user->second.salt);
 				if (user->second.password == password)
 					return true;
 				else
 					response.err = HEADER::e_incorrect_password;
+			}
 			else
 				response.err = HEADER::e_incorrect_login;
 			return false;
@@ -1338,21 +1313,21 @@ free_all:
 		{
 			if (header.login_size > MAX_LOGIN)
 			{
-				::syslog(LOG_ERR, "HEADER::login_size = %zu and is too long.", header.login_size);
+				::syslog(LOG_ERR, "HEADER::login_size = %zu which is too long.", header.login_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
 			}
 			
 			if (header.password_size > MAX_PASSWORD)
 			{
-				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too long.", header.password_size);
+				::syslog(LOG_ERR, "HEADER::password_size = %zu which is too long.", header.password_size);
 				response.err = HEADER::e_too_long_password;
 				return true;
 			}
 			
 			if (header.password_size < 8)
 			{
-				::syslog(LOG_ERR, "HEADER::password_size = %zu and is too short.", header.password_size);
+				::syslog(LOG_ERR, "HEADER::password_size = %zu which is too short.", header.password_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
 			}
@@ -1360,15 +1335,15 @@ free_all:
 			return false;
 		}
 		
-		inline static bool compute_passwd_hash(std::string& password)
+		inline static bool compute_passwd_hash(std::string& password, std::string& salt)
 		{
-			char* salt = nullptr;
+			char* arr_salt = (salt.empty() ? nullptr : salt.data());
 			char* hash = nullptr;
-			if (hash_passwd(&salt, &hash, password.data(), __detail__::PASSWD_HASH_TYPE))
+			if (hash_passwd(&arr_salt, &hash, password.data(), __detail__::PASSWD_HASH_TYPE))
 			{
 				password.clear();
 				password = hash;
-				delete[] salt;
+				salt = arr_salt;
 				return true;
 			}
 			else ::syslog(LOG_ERR, "Failed to compute password hash.");
@@ -1390,8 +1365,6 @@ free_all:
 				io.read(password.data(), header.password_size);
 			password[header.password_size] = 0;
 			
-			compute_passwd_hash(password);
-			
 			return true;
 		}
 		
@@ -1399,7 +1372,7 @@ free_all:
 		{
 			if (header.display_name_size > MAX_DISPLAY_NAME)
 			{
-				::syslog(LOG_ERR, "HEADER::display_name_size = %zu and is too long.", header.display_name_size);
+				::syslog(LOG_ERR, "HEADER::display_name_size = %zu which is too long.", header.display_name_size);
 				response.err = HEADER::e_too_long_display_name;
 				return true;
 			}
@@ -1477,8 +1450,7 @@ free_all:
 		inline static bool client_processing(inet::inet_io& io, const inet::inet_address& address, inet::server* serv)
 		{
 			auto* this_ptr = static_cast<server*>(serv->extra);
-			while (process_request(server_io(io), address, this_ptr));
-			return true;
+			return process_request(server_io(io), address, this_ptr);
 		}
 		
 		inline static bool hash_passwd(char** salt_p, char** hash, char* passwd, __detail__::passwd_modes mode)
