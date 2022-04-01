@@ -215,7 +215,7 @@ int main(int argc, char** argv)
 	{
 		auto cli = *msg::client::create_client(::address);
 		std::string status;
-		inet::__detail__::_log_ << log_console::off;
+		if (!::debug) inet::__detail__::_log_ << log_console::off;
 		switch (::operation_signal)
 		{
 			case msg::HEADER::s_register_user:
