@@ -679,88 +679,12 @@ namespace msg
 			}
 			return false;
 		}
-		
-		inline bool read(HEADER& header)
-		{
-			return read(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool read(MESSAGE& message)
-		{
-			if (read(&message, sizeof message) == sizeof message)
-			{
-				char* source = new char[message.source_size + 1]{ };
-				char* data = new char[message.data_size + 1]{ };
-				if (read(source, message.source_size) == message.source_size &&
-					read(data, message.data_size) == message.data_size)
-				{
-					message.source = std::make_unique<std::string>(source);
-					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
-					delete[] source;
-					delete[] data;
-					return true;
-				}
-				delete[] source;
-				delete[] data;
-			}
-			return false;
-		}
-		
-		template <typename T>
-		inline bool read(T& obj)
-		{
-			return read(&obj, sizeof obj) == sizeof obj;
-		}
-		
-		inline ssize_t read(std::string& str)
-		{
-			size_t size = 0;
-			return read(&size, sizeof size);
-			{
-				str.resize(size);
-				return read(str.data(), size);
-			}
-			return -1;
-		}
-		
-		ssize_t read(void* data, size_t size)
-		
-		override
-		{
-			return
-					inet_io::read(
-							data, size
-					);
-		}
-		
-		inline bool write(const HEADER& header)
-		{
-			return write(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool write(MESSAGE message)
-		{
-			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
-			{
-				message.destination_size = message.destination->size();
-				message.data_size = message.data->size();
-				if (write(&message, sizeof message) == sizeof message &&
-					write(message.destination->c_str(), message.destination_size) == message.destination_size &&
-					write(message.data->data(), message.data_size) == message.data_size)
-					return true;
-			}
-			return false;
-		}
-		
-		inline bool write(const std::string& str)
-		{
-			return write(str.c_str(), str.size());
-		}
-		
-		ssize_t write(const void* data, int size) override
-		{
-			return inet::client::write(data, size);
-		}
+	
+	private:
+		inline explicit client(
+				const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
+				: inet::client(server_address, true, cert_file, key_file)
+		{ }
 		
 		inline static int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
 		{
@@ -885,15 +809,88 @@ free_all:
 			
 			return (ret == 1);
 		}
-	
-	
-	private:
 		
-		inline explicit client(
-				const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
-				: inet::client(server_address, true, cert_file, key_file)
-		{ }
+		inline bool read(HEADER& header)
+		{
+			return read(&header, sizeof header) == sizeof header;
+		}
 		
+		inline bool read(MESSAGE& message)
+		{
+			if (read(&message, sizeof message) == sizeof message)
+			{
+				char* source = new char[message.source_size + 1]{ };
+				char* data = new char[message.data_size + 1]{ };
+				if (read(source, message.source_size) == message.source_size &&
+					read(data, message.data_size) == message.data_size)
+				{
+					message.source = std::make_unique<std::string>(source);
+					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
+					delete[] source;
+					delete[] data;
+					return true;
+				}
+				delete[] source;
+				delete[] data;
+			}
+			return false;
+		}
+		
+		template <typename T>
+		inline bool read(T& obj)
+		{
+			return read(&obj, sizeof obj) == sizeof obj;
+		}
+		
+		inline ssize_t read(std::string& str)
+		{
+			size_t size = 0;
+			return read(&size, sizeof size);
+			{
+				str.resize(size);
+				return read(str.data(), size);
+			}
+			return -1;
+		}
+		
+		ssize_t read(void* data, size_t size)
+		
+		override
+		{
+			return
+					inet_io::read(
+							data, size
+					);
+		}
+		
+		inline bool write(const HEADER& header)
+		{
+			return write(&header, sizeof header) == sizeof header;
+		}
+		
+		inline bool write(MESSAGE message)
+		{
+			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
+			{
+				message.destination_size = message.destination->size();
+				message.data_size = message.data->size();
+				if (write(&message, sizeof message) == sizeof message &&
+					write(message.destination->c_str(), message.destination_size) == message.destination_size &&
+					write(message.data->data(), message.data_size) == message.data_size)
+					return true;
+			}
+			return false;
+		}
+		
+		inline bool write(const std::string& str)
+		{
+			return write(str.c_str(), str.size());
+		}
+		
+		ssize_t write(const void* data, int size) override
+		{
+			return inet::client::write(data, size);
+		}
 	};
 	
 	class server_io : public inet::inet_io
