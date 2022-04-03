@@ -13,7 +13,7 @@
 # include <sys/stat.h>
 # include <memory>
 # include <sys/wait.h>
-#include <vector>
+# include <vector>
 
 # ifndef MESSENGER_NAME
 #  define MESSENGER_NAME "privacy-protection-messenger"
