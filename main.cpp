@@ -134,7 +134,7 @@ void wr_pipe(const Container<T>& cont)
 {
 	size_t size = cont.size();
 	::write(odatapipe, &size, sizeof size);
-	if (size) ::write(odatapipe, cont.data(), size);
+	if (size > 0) ::write(odatapipe, cont.data(), size);
 }
 
 template <typename T>
@@ -150,7 +150,7 @@ void rd_pipe(Container<T>& cont)
 	::read(idatapipe, &size, sizeof size);
 	if (size)
 	{
-		cont.resize(size, 0);
+		cont.resize(size + 1, 0);
 		::read(idatapipe, cont.data(), size);
 	}
 }
