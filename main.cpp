@@ -314,7 +314,8 @@ int main(int argc, char** argv)
 			case msg::HEADER::s_query_incoming:
 			{
 				msg::MESSAGE msg;
-				cli.query_incoming(::login, ::password, msg, status);
+				auto res = cli.query_incoming(::login, ::password, msg, status);
+				wr_pipe(res);
 				wr_pipe(*msg.source);
 				wr_pipe(*msg.data);
 			}
