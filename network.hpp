@@ -6,7 +6,6 @@
 # define PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
 
 # include <inet-comm>
-# include <xor-crypt>
 # include <deque>
 # include <sys/syslog.h>
 # include <md5.h>
@@ -14,6 +13,8 @@
 # include <memory>
 # include <sys/wait.h>
 # include <vector>
+
+#define ERR_COLOR color::red
 
 # ifndef MESSENGER_NAME
 #  define MESSENGER_NAME "privacy-protection-messenger"
