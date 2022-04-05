@@ -21,9 +21,10 @@ static msg::HEADER::signal operation_signal = msg::HEADER::s_zero;
 static char* login;
 static char* password;
 static char* metadata;
-static int datapipe = -1;
+static int idatapipe = -1;
+static int odatapipe = -1;
 
-static constexpr const char* s_options = "m:a:o:l:p:M:P:c:dv?";
+static constexpr const char* s_options = "m:a:o:l:p:M:I:O:c:dv?";
 const option l_options[]{
 		{"mode",        required_argument, nullptr, 'm'},
 		
@@ -33,7 +34,8 @@ const option l_options[]{
 		{"login",       required_argument, nullptr, 'l'},
 		{"password",    required_argument, nullptr, 'p'},
 		{"metadata",    required_argument, nullptr, 'M'},
-		{"datapipe",    required_argument, nullptr, 'P'},
+		{"idatapipe",   required_argument, nullptr, 'I'},
+		{"odatapipe",   required_argument, nullptr, 'O'},
 		
 		{"max-clients", required_argument, nullptr, 'c'},
 		
@@ -56,7 +58,8 @@ inline static void help(int code)
 	::printf("m  --login|-l        <login>      login\n");
 	::printf("m  --password|-p     <password>   password\n");
 	::printf("o  --metadata|-M     <data>       undefined purpose data\n");
-	::printf("o  --datapipe|-P     <pipedes>    message data transfer pipe\n");
+	::printf("o  --idatapipe|-I    <pipedes>    message data transfer pipe - input\n");
+	::printf("o  --odatapipe|-O    <pipedes>    message data transfer pipe - output\n");
 	
 	::printf("\n For SERVER mode\n");
 	::printf("o  --address|-a      <IP>      server ip address\n");
@@ -120,6 +123,38 @@ inline static void run_server()
 	}
 }
 
+template <typename T>
+void wr_pipe(const T& val)
+{
+	::write(odatapipe, &val, sizeof val);
+}
+
+template <template <typename> typename Container, typename T>
+void wr_pipe(const Container<T>& cont)
+{
+	size_t size = cont.size();
+	::write(odatapipe, &size, sizeof size);
+	if (size) ::write(odatapipe, cont.data(), size);
+}
+
+template <typename T>
+void rd_pipe(T& val)
+{
+	::read(idatapipe, &val, sizeof val);
+}
+
+template <template <typename> typename Container, typename T>
+void rd_pipe(Container<T>& cont)
+{
+	size_t size;
+	::read(idatapipe, &size, sizeof size);
+	if (size)
+	{
+		cont.resize(size, 0);
+		::read(idatapipe, cont.data(), size);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	appname = argv[0];
@@ -162,9 +197,17 @@ int main(int argc, char** argv)
 				break;
 			}
 			
-			case 'P':
+			case 'I':
 			{
-				::datapipe = ::strtol(optarg, nullptr, 10);
+				::idatapipe = ::strtol(optarg, nullptr, 10);
+				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
+				break;
+			}
+			
+			case 'O':
+			{
+				::odatapipe = ::strtol(optarg, nullptr, 10);
+				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
 				break;
 			}
 			
@@ -215,30 +258,45 @@ int main(int argc, char** argv)
 	{
 		auto cli = *msg::client::create_client(::address);
 		std::string status;
-		if (!::debug) inet::__detail__::_log_ << log_console::off;
 		switch (::operation_signal)
 		{
 			case msg::HEADER::s_register_user:
-				cli.register_user(::login, ::password, ::metadata, status);
+			{
+				auto res = cli.register_user(::login, ::password, ::metadata, status);
+				wr_pipe(res);
+			}
 				break;
 			case msg::HEADER::s_set_password:
-				cli.set_password(::login, ::password, ::metadata, status);
+			{
+				auto res = cli.set_password(::login, ::password, ::metadata, status);
+				wr_pipe(res);
+			}
 				break;
 			case msg::HEADER::s_set_display_name:
-				cli.set_display_name(::login, ::password, ::metadata, status);
+			{
+				auto res = cli.set_display_name(::login, ::password, ::metadata, status);
+				wr_pipe(res);
+			}
 				break;
 			case msg::HEADER::s_get_display_name:
 			{
 				std::string result;
-				cli.get_display_name(::login, ::password, result, status);
-				std::cout << result << "\n";
+				auto res = cli.get_display_name(::login, ::password, result, status);
+				wr_pipe(res);
+				wr_pipe(result);
 			}
 				break;
 			case msg::HEADER::s_begin_session:
-				cli.begin_session(::login, ::password, status);
+			{
+				auto res = cli.begin_session(::login, ::password, status);
+				wr_pipe(res);
+			}
 				break;
 			case msg::HEADER::s_end_session:
-				cli.end_session(::login, ::password, status);
+			{
+				auto res = cli.end_session(::login, ::password, status);
+				wr_pipe(res);
+			}
 				break;
 			case msg::HEADER::s_send_message:
 			{
@@ -246,48 +304,47 @@ int main(int argc, char** argv)
 				msg.destination = std::make_unique<std::string>(::metadata);
 				msg.destination_size = msg.destination->size();
 				
-				::read(::datapipe, &msg.data_size, sizeof msg.data_size);
-				msg.data = std::make_unique<std::vector<char>>(msg.data_size, 0);
-				if (msg.data_size > 0)::read(::datapipe, msg.data->data(), msg.data_size);
+				msg.data = std::make_unique<std::vector<char>>();
+				rd_pipe(*msg.data);
 				
-				cli.send_message(::login, ::password, msg, status);
+				auto res = cli.send_message(::login, ::password, msg, status);
+				wr_pipe(res);
 			}
 				break;
 			case msg::HEADER::s_query_incoming:
 			{
 				msg::MESSAGE msg;
 				cli.query_incoming(::login, ::password, msg, status);
-				if (msg.source && !msg.source->empty())
-					std::cout << msg.source->size() << " " << msg.source << "\n";
-				else
-					std::cout << "0\n";
-				::write(::datapipe, &msg.data_size, sizeof msg.data_size);
-				if (msg.data && !msg.data->empty()) ::write(::datapipe, msg.data->data(), msg.data_size);
+				wr_pipe(*msg.source);
+				wr_pipe(*msg.data);
 			}
 				break;
 			case msg::HEADER::s_check_online_status:
 			{
 				bool online = false;
-				cli.check_online_status(::login, ::password, ::metadata, online, status);
-				std::cout << online << "\n";
+				auto res = cli.check_online_status(::login, ::password, ::metadata, online, status);
+				wr_pipe(res);
+				wr_pipe(online);
 			}
 				break;
 			case msg::HEADER::s_find_users_by_display_name:
 			{
 				std::list<std::string> list;
-				cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
-				std::cout << list.size() << "\n";
+				auto res = cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
+				wr_pipe(res);
+				wr_pipe(list.size());
 				for (auto&& i: list)
-					std::cout << i << "\n";
+					wr_pipe(i);
 			}
 				break;
 			case msg::HEADER::s_find_users_by_login:
 			{
 				std::list<std::string> list;
-				cli.find_users_by_login(::login, ::password, ::metadata, list, status);
-				std::cout << list.size() << "\n";
+				auto res = cli.find_users_by_login(::login, ::password, ::metadata, list, status);
+				wr_pipe(res);
+				wr_pipe(list.size());
 				for (auto&& i: list)
-					std::cout << i << "\n";
+					wr_pipe(i);
 			}
 				break;
 			default:
