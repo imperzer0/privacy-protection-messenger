@@ -158,6 +158,7 @@ namespace msg
 			s_get_display_name,
 			s_begin_session,
 			s_end_session,
+			s_get_pubkey,
 			s_send_message,
 			s_query_incoming,
 			s_check_online_status,
@@ -180,6 +181,8 @@ namespace msg
 				return SIGNAL_NAME(s_begin_session);
 			else if (sig == s_end_session)
 				return SIGNAL_NAME(s_end_session);
+			else if (sig == s_get_pubkey)
+				return SIGNAL_NAME(s_get_pubkey);
 			else if (sig == s_send_message)
 				return SIGNAL_NAME(s_send_message);
 			else if (sig == s_query_incoming)
@@ -207,6 +210,8 @@ namespace msg
 				return s_begin_session;
 			else if (name == SIGNAL_NAME(s_end_session))
 				return s_end_session;
+			else if (name == SIGNAL_NAME(s_get_pubkey))
+				return s_get_pubkey;
 			else if (name == SIGNAL_NAME(s_send_message))
 				return s_send_message;
 			else if (name == SIGNAL_NAME(s_query_incoming))
@@ -247,24 +252,119 @@ namespace msg
 	{
 		std::unique_ptr<std::string> source = nullptr;
 		std::unique_ptr<std::string> destination = nullptr;
-		std::unique_ptr<std::vector<char>> data = nullptr;
+		std::unique_ptr<std::vector<uint8_t>> data = nullptr;
 		
 		size_t source_size = 0;
 		size_t destination_size = 0;
 		size_t data_size = 0;
-		size_t message_no = -1ul;
 		
 		MESSAGE() = default;
 		
 		MESSAGE(const MESSAGE& msg)
 				: source(msg.source ? std::make_unique<std::string>(*msg.source) : nullptr),
 				  destination(msg.destination ? std::make_unique<std::string>(*msg.destination) : nullptr),
-				  data(msg.data ? std::make_unique<std::vector<char>>(*msg.data) : nullptr),
+				  data(msg.data ? std::make_unique<std::vector<uint8_t>>(*msg.data) : nullptr),
 				  source_size(msg.source->size()),
 				  destination_size(msg.destination->size()),
-				  data_size(msg.data->size()),
-				  message_no(msg.message_no)
+				  data_size(msg.data->size())
 		{ }
+	};
+	
+	class messenger_io : public inet::inet_io
+	{
+	public:
+		explicit messenger_io(const inet::inet_io& io) : inet::inet_io(io)
+		{ }
+		
+		inline bool read(HEADER& header)
+		{
+			return read(&header, sizeof header) == sizeof header;
+		}
+		
+		inline bool read(MESSAGE& message)
+		{
+			if (read(&message, sizeof message) == sizeof message && message.data_size > 0)
+			{
+				if (message.source_size > 0)
+				{
+					message.source = std::make_unique<std::string>(message.source_size, 0);
+					if (read(message.source->data(), message.source_size) != message.source_size)
+						return false;
+				}
+				if (message.destination_size)
+				{
+					message.destination = std::make_unique<std::string>(message.destination_size, 0);
+					if (read(message.destination->data(), message.destination_size) != message.destination_size)
+						return false;
+				}
+				message.data = std::make_unique<std::vector<uint8_t>>(message.data_size, 0);
+				return read(message.data->data(), message.data_size) == message.data_size;
+			}
+			return false;
+		}
+		
+		template <template <typename> typename Container, typename T>
+		inline bool read(Container<T>& cont)
+		{
+			size_t size;
+			if (read(&size, sizeof size) != sizeof size) return false;
+			if (size > 0)
+			{
+				cont.resize(size, 0);
+				return read(cont.data(), size) == size;
+			}
+			return true;
+		}
+		
+		inline ssize_t read(void* data, size_t size) override
+		{
+			return inet_io::read(data, size);
+		}
+		
+		inline bool write(const HEADER& header)
+		{
+			return write(&header, sizeof header) == sizeof header;
+		}
+		
+		inline bool write(MESSAGE& message)
+		{
+			message.source_size = message.source->size();
+			message.destination_size = message.destination->size();
+			message.data_size = message.data->size();
+			return write(static_cast<const MESSAGE&>(message));
+		}
+		
+		inline bool write(const MESSAGE& message)
+		{
+			if (message.data && !message.data->empty())
+			{
+				write(&message, sizeof message);
+				if (message.source_size > 0) write(message.source->c_str(), message.source_size);
+				if (message.destination_size > 0) write(message.destination->c_str(), message.destination_size);
+				write(message.data->data(), message.data_size);
+				return true;
+			}
+			return false;
+		}
+		
+		template <template <typename> typename Container, typename T>
+		inline void write(const Container<T>& cont)
+		{
+			size_t size = cont.size();
+			write(&size, sizeof size);
+			if (size > 0) write(cont.data(), size);
+		}
+		
+		template <typename T>
+		inline bool write(const T& obj)
+		{
+			return write(&obj, sizeof obj);
+		}
+		
+		inline ssize_t write(const void* data, int size) override
+		{
+			return inet_io::write(data, size);
+		}
 	};
 
 #define HANDLE_ERRORS    case HEADER::e_incorrect_login: \
@@ -384,7 +484,7 @@ namespace msg
 		return true;
 	}
 	
-	class client : public inet::client
+	class client : public inet::client, private messenger_io
 	{
 	public:
 		template <bool do_fork = true>
@@ -398,12 +498,12 @@ namespace msg
 		
 		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
-			write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()});
-			write(login);
-			write(password);
-			write(display_name);
+			messenger_io::write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(display_name);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -419,16 +519,14 @@ namespace msg
 			return false;
 		}
 		
-		inline
-		
-		bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
+		inline bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
 		{
-			write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()});
-			write(login);
-			write(password);
-			write(new_password);
+			messenger_io::write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(new_password);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -446,12 +544,12 @@ namespace msg
 		
 		inline bool set_display_name(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
-			write(HEADER{HEADER::s_set_display_name, login.size(), password.size(), display_name.size()});
-			write(login);
-			write(password);
-			write(display_name);
+			messenger_io::write(HEADER{HEADER::s_set_display_name, login.size(), password.size(), display_name.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(display_name);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -468,18 +566,18 @@ namespace msg
 		
 		inline bool get_display_name(const std::string& login, const std::string& password, std::string& display_name, std::string& status)
 		{
-			write(HEADER{HEADER::s_get_display_name, login.size(), password.size()});
-			write(login);
-			write(password);
+			messenger_io::write(HEADER{HEADER::s_get_display_name, login.size(), password.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
 					case HEADER::e_success:
 					{
 						status = E_SUCCESS;
-						read(display_name);
+						messenger_io::read(display_name);
 						return true;
 					}
 					HANDLE_ERRORS
@@ -489,13 +587,14 @@ namespace msg
 			return false;
 		}
 		
-		inline bool begin_session(const std::string& login, const std::string& password, std::string& status)
+		inline bool begin_session(const std::string& login, const std::string& password, const std::vector<uint8_t>& pubkey, std::string& status)
 		{
-			write(HEADER{HEADER::s_begin_session, login.size(), password.size()});
-			write(login);
-			write(password);
+			messenger_io::write(HEADER{HEADER::s_begin_session, login.size(), password.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(pubkey);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -513,16 +612,40 @@ namespace msg
 		
 		inline bool end_session(const std::string& login, const std::string& password, std::string& status)
 		{
-			write(HEADER{HEADER::s_end_session, login.size(), password.size()});
-			write(login);
-			write(password);
+			messenger_io::write(HEADER{HEADER::s_end_session, login.size(), password.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
 					case HEADER::e_success:
 					{
+						status = E_SUCCESS;
+						return true;
+					}
+					HANDLE_ERRORS
+				}
+			}
+			return false;
+		}
+		
+		inline bool get_pubkey(
+				const std::string& login, const std::string& password, const std::string& target, std::vector<uint8_t>& pubkey, std::string& status)
+		{
+			messenger_io::write(HEADER{HEADER::s_get_pubkey, login.size(), password.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(target);
+			HEADER res;
+			if (messenger_io::read(res))
+			{
+				switch (res.err)
+				{
+					case HEADER::e_success:
+					{
+						messenger_io::read(pubkey);
 						status = E_SUCCESS;
 						return true;
 					}
@@ -539,12 +662,12 @@ namespace msg
 			if (message.destination) message_size += message.destination->size();
 			if (message.data) message_size += message.data->size();
 			
-			write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size});
-			write(login);
-			write(password);
-			write(message);
+			messenger_io::write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(message);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -566,18 +689,18 @@ namespace msg
 			if (message.destination) message_size += message.destination->size();
 			if (message.data) message_size += message.data->size();
 			
-			write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size});
-			write(login);
-			write(password);
+			messenger_io::write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size});
+			messenger_io::write(login);
+			messenger_io::write(password);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
 					case HEADER::e_success:
 					{
 						status = E_SUCCESS;
-						return read(message);
+						return messenger_io::read(message);
 					}
 					HANDLE_ERRORS
 				}
@@ -588,18 +711,18 @@ namespace msg
 		inline bool check_online_status(
 				const std::string& login, const std::string& password, const std::string& another_user, bool& online_status, std::string& status)
 		{
-			write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()});
-			write(login);
-			write(password);
-			write(another_user);
+			messenger_io::write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(another_user);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
 					case HEADER::e_success:
 					{
-						read(online_status);
+						messenger_io::read(&online_status, sizeof online_status);
 						status = E_SUCCESS;
 						return true;
 					}
@@ -613,12 +736,12 @@ namespace msg
 				const std::string& login, const std::string& password, const std::string& display_name, std::list<std::string>& list,
 				std::string& status)
 		{
-			write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()});
-			write(login);
-			write(password);
-			write(display_name);
+			messenger_io::write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(display_name);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -626,13 +749,13 @@ namespace msg
 					{
 						status = E_SUCCESS;
 						size_t amount = 0;
-						if (read(amount))
+						if (messenger_io::read(&amount, sizeof amount) == amount)
 						{
 							amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
 							for (size_t i = 0; i < amount; ++i)
 							{
 								std::string entry;
-								if (!read(entry)) return false;
+								if (!messenger_io::read(entry)) return false;
 								list.push_back(entry);
 							}
 							return true;
@@ -649,12 +772,12 @@ namespace msg
 				const std::string& login, const std::string& password, const std::string& another_user, std::list<std::string>& list,
 				std::string& status)
 		{
-			write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()});
-			write(login);
-			write(password);
-			write(another_user);
+			messenger_io::write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()});
+			messenger_io::write(login);
+			messenger_io::write(password);
+			messenger_io::write(another_user);
 			HEADER res;
-			if (read(res))
+			if (messenger_io::read(res))
 			{
 				switch (res.err)
 				{
@@ -662,13 +785,13 @@ namespace msg
 					{
 						status = E_SUCCESS;
 						size_t amount = 0;
-						if (read(amount))
+						if (messenger_io::read(&amount, sizeof amount))
 						{
 							amount = std::min(MAX_USER_ENTRIES_AMOUNT, amount);
 							for (size_t i = 0; i < amount; ++i)
 							{
 								std::string entry;
-								if (!read(entry)) return false;
+								if (!messenger_io::read(entry)) return false;
 								list.push_back(entry);
 							}
 							return true;
@@ -682,293 +805,12 @@ namespace msg
 		}
 	
 	private:
-		inline explicit client(
-				const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
-				: inet::client(server_address, true, cert_file, key_file)
-		{ }
-		
-		inline static int reconstruct_rsa_pub_key(EVP_PKEY* evp_pbkey, char* pub_key, int pub_len)
+		inline explicit client(const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
+				: messenger_io(inet::inet_io()), inet::client(server_address, true, cert_file, key_file)
 		{
-			auto* pbkeybio = BIO_new_mem_buf((void*)pub_key, pub_len);
-			if (pbkeybio == nullptr)
-			{
-				return -1;
-			}
-			evp_pbkey = PEM_read_bio_PUBKEY(pbkeybio, &evp_pbkey, nullptr, nullptr);
-			if (evp_pbkey == nullptr)
-			{
-				char buffer[120];
-				ERR_error_string(ERR_get_error(), buffer);
-				ERR << ERR_COLOR << "Error reading public key: " << buffer << ENDENTLN;
-			}
-			
-			BIO_free(pbkeybio);
-			return 1;
-		}
-		
-		inline static int reconstruct_rsa_pri_key(EVP_PKEY* evp_pbkey, EVP_PKEY* evp_pkey, char* pri_key)
-		{
-			auto* pkeybio = BIO_new_mem_buf((void*)pri_key, -1);
-			if (pkeybio == nullptr)
-			{
-				return -1;
-			}
-			evp_pkey = PEM_read_bio_PrivateKey(pkeybio, &evp_pkey, nullptr, nullptr);
-			if (evp_pbkey == nullptr)
-			{
-				char buffer[120];
-				ERR_error_string(ERR_get_error(), buffer);
-				ERR << ERR_COLOR << "Error reading private key: " << buffer << ENDENTLN;
-			}
-			
-			BIO_free(pkeybio);
-			return 1;
-		}
-		
-		inline static bool generate_rsa_key(char*& pri_key, int& pri_len, char*& pub_key, int& pub_len)
-		{
-			int ret = 0;
-			RSA* r = nullptr;
-			BIGNUM* bne = nullptr;
-			BIO* bp_public = nullptr, * bp_private = nullptr;
-			int bits = 2048;
-			unsigned long e = RSA_F4;
-			
-			RSA* pb_rsa = nullptr;
-			RSA* p_rsa = nullptr;
-			EVP_PKEY* evp_pbkey = nullptr;
-			EVP_PKEY* evp_pkey = nullptr;
-			
-			BIO* pbkeybio = nullptr;
-			BIO* pkeybio = nullptr;
-			
-			// 1. generate rsa key
-			bne = BN_new();
-			ret = BN_set_word(bne, e);
-			if (ret != 1)
-			{
-				goto free_all;
-			}
-			
-			r = RSA_new();
-			ret = RSA_generate_key_ex(r, bits, bne, nullptr);
-			if (ret != 1)
-			{
-				goto free_all;
-			}
-			
-			// 2. save public key
-			//bp_public = BIO_new_file("public.pem", "w+");
-			bp_public = BIO_new(BIO_s_mem());
-			ret = PEM_write_bio_RSAPublicKey(bp_public, r);
-			if (ret != 1)
-			{
-				goto free_all;
-			}
-			
-			// 3. save private key
-			//bp_private = BIO_new_file("private.pem", "w+");
-			bp_private = BIO_new(BIO_s_mem());
-			ret = PEM_write_bio_RSAPrivateKey(bp_private, r, nullptr, nullptr, 0, nullptr, nullptr);
-			
-			//4. Get the keys are PEM formatted strings
-			pri_len = BIO_pending(bp_private);
-			pub_len = BIO_pending(bp_public);
-			
-			pri_key = (char*)malloc(pri_len + 1);
-			pub_key = (char*)malloc(pub_len + 1);
-			
-			BIO_read(bp_private, pri_key, pri_len);
-			BIO_read(bp_public, pub_key, pub_len);
-			
-			pri_key[pri_len] = '\0';
-			pub_key[pub_len] = '\0';
-			
-			printf("\n%s\n%s\n", pri_key, pub_key);
-			
-			//verify if you are able to re-construct the keys
-			
-			ret = reconstruct_rsa_pub_key(evp_pbkey, pub_key, pub_len);
-			if (ret != 1)
-			{
-				goto free_all;
-			}
-			
-			ret = reconstruct_rsa_pri_key(evp_pbkey, evp_pkey, pri_key);
-			if (ret != 1)
-			{
-				goto free_all;
-			}
-			
-			// 4. free
-free_all:
-			
-			BIO_free_all(bp_public);
-			BIO_free_all(bp_private);
-			RSA_free(r);
-			BN_free(bne);
-			
-			return (ret == 1);
-		}
-		
-		inline bool read(HEADER& header)
-		{
-			return read(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool read(MESSAGE& message)
-		{
-			if (read(&message, sizeof message) == sizeof message)
-			{
-				char* source = new char[message.source_size + 1]{ };
-				char* data = new char[message.data_size + 1]{ };
-				if (read(source, message.source_size) == message.source_size &&
-					read(data, message.data_size) == message.data_size)
-				{
-					message.source = std::make_unique<std::string>(source);
-					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
-					delete[] source;
-					delete[] data;
-					return true;
-				}
-				delete[] source;
-				delete[] data;
-			}
-			return false;
-		}
-		
-		template <typename T>
-		inline bool read(T& obj)
-		{
-			return read(&obj, sizeof obj) == sizeof obj;
-		}
-		
-		inline ssize_t read(std::string& str)
-		{
-			size_t size = 0;
-			return read(&size, sizeof size);
-			{
-				str.resize(size);
-				return read(str.data(), size);
-			}
-			return -1;
-		}
-		
-		ssize_t read(void* data, size_t size)
-		
-		override
-		{
-			return
-					inet_io::read(
-							data, size
-					);
-		}
-		
-		inline bool write(const HEADER& header)
-		{
-			return write(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool write(MESSAGE message)
-		{
-			if (message.destination && !message.destination->empty() && message.data && !message.data->empty())
-			{
-				message.destination_size = message.destination->size();
-				message.data_size = message.data->size();
-				if (write(&message, sizeof message) == sizeof message &&
-					write(message.destination->c_str(), message.destination_size) == message.destination_size &&
-					write(message.data->data(), message.data_size) == message.data_size)
-					return true;
-			}
-			return false;
-		}
-		
-		inline bool write(const std::string& str)
-		{
-			return write(str.c_str(), str.size());
-		}
-		
-		ssize_t write(const void* data, int size) override
-		{
-			return inet::client::write(data, size);
-		}
-	};
-	
-	class server_io : public inet::inet_io
-	{
-	public:
-		explicit server_io(inet::inet_io& io) : inet::inet_io(io)
-		{ }
-		
-		inline bool read(HEADER& header)
-		{
-			return read(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool read(MESSAGE& message)
-		{
-			if (read(&message, sizeof message) == sizeof message)
-			{
-				char* destination = new char[message.destination_size + 1]{ };
-				char* data = new char[message.data_size + 1]{ };
-				if (read(destination, message.destination_size) == message.destination_size &&
-					read(data, message.data_size) == message.data_size)
-				{
-					message.destination = std::make_unique<std::string>(destination);
-					message.data = std::make_unique<std::vector<char>>(data, data + message.data_size);
-					delete[] destination;
-					delete[] data;
-					return true;
-				}
-				delete[] destination;
-				delete[] data;
-			}
-			return false;
-		}
-		
-		ssize_t read(void* data, size_t size) override
-		{
-			return inet_io::read(data, size);
-		}
-		
-		inline bool write(const HEADER& header)
-		{
-			return write(&header, sizeof header) == sizeof header;
-		}
-		
-		inline bool write(MESSAGE message)
-		{
-			if (message.source && !message.source->empty() && message.data && !message.data->empty())
-			{
-				message.source_size = message.source->size();
-				message.data_size = message.data->size();
-				if (write(&message, sizeof message) == sizeof message &&
-					write(message.source->c_str(), message.source->size()) == message.source->size() &&
-					write(message.data->data(), message.data_size) == message.data_size)
-					return true;
-			}
-			return false;
-		}
-		
-		inline bool write(const std::string& str)
-		{
-			size_t size = str.size();
-			if (write(&size, sizeof size) == sizeof size)
-				if (!str.empty())
-					if (write(str.c_str(), size) == size)
-						return true;
-			return false;
-		}
-		
-		template <typename T>
-		inline bool write(const T& obj)
-		{
-			return write(&obj, sizeof obj);
-		}
-		
-		ssize_t write(const void* data, int size) override
-		{
-			return inet_io::write(data, size);
+			this->messenger_io::ssl = this->inet::client::ssl;
+			this->messenger_io::socket = this->inet::client::socket;
+			this->messenger_io::success = this->inet::client::success;
 		}
 	};
 	
@@ -1039,6 +881,7 @@ free_all:
 			std::string password;
 			std::string display_name;
 			bool is_session_running = false;
+			std::vector<uint8_t> pubkey;
 		};
 		
 		
@@ -1050,7 +893,7 @@ free_all:
 				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
 		{ }
 		
-		inline static bool process_request(server_io io, const inet::inet_address& address, server* serv)
+		inline static bool process_request(messenger_io io, const inet::inet_address& address, server* serv)
 		{
 			HEADER header;
 			io.read(header);
@@ -1136,7 +979,9 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Receive encryption public key
+							std::vector<uint8_t> pubkey;
+							io.read(pubkey);
+							user->second.pubkey = pubkey;
 							user->second.is_session_running = true;
 							::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 							response.err = HEADER::e_success;
@@ -1148,10 +993,29 @@ free_all:
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							/// TODO: Clear encryption public key
+							user->second.pubkey = { };
 							user->second.is_session_running = false;
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
+						}
+						return io.write(response);
+					}
+					case HEADER::s_get_pubkey:
+					{
+						decltype(users.end()) user;
+						if (check_credentials(response, login, password, user))
+						{
+							std::string target;
+							read_data(io, header, target);
+							auto target_it = users.find(target);
+							if (target_it != users.end())
+							{
+								response.err = HEADER::e_success;
+								io.write(response);
+								io.write(target_it->second.pubkey);
+								return true;
+							}
+							response.err = HEADER::e_user_not_found;
 						}
 						return io.write(response);
 					}
@@ -1307,7 +1171,7 @@ free_all:
 			return false;
 		}
 		
-		inline static bool assert_credentials(server_io& io, const HEADER& header, HEADER& response)
+		inline static bool assert_credentials(messenger_io& io, const HEADER& header, HEADER& response)
 		{
 			if (header.login_size > MAX_LOGIN)
 			{
@@ -1348,17 +1212,17 @@ free_all:
 			return false;
 		}
 		
-		inline static bool read_credentials(server_io& io, const HEADER& header, HEADER& response, std::string& login, std::string& password)
+		inline static bool read_credentials(messenger_io& io, const HEADER& header, HEADER& response, std::string& login, std::string& password)
 		{
 			if (assert_credentials(io, header, response))
 				return false;
 			
-			login.resize(header.login_size + 1, 0);
+			login.resize(header.login_size, 0);
 			if (header.login_size)
 				io.read(login.data(), header.login_size);
 			login[header.login_size] = 0;
 			
-			password.resize(header.password_size + 1, 0);
+			password.resize(header.password_size, 0);
 			if (header.password_size)
 				io.read(password.data(), header.password_size);
 			password[header.password_size] = 0;
@@ -1366,7 +1230,7 @@ free_all:
 			return true;
 		}
 		
-		inline static bool assert_display_name(server_io& io, const HEADER& header, HEADER& response)
+		inline static bool assert_display_name(messenger_io& io, const HEADER& header, HEADER& response)
 		{
 			if (header.display_name_size > MAX_DISPLAY_NAME)
 			{
@@ -1378,12 +1242,12 @@ free_all:
 			return false;
 		}
 		
-		inline static bool read_display_name(server_io& io, const HEADER& header, HEADER& response, std::string& display_name)
+		inline static bool read_display_name(messenger_io& io, const HEADER& header, HEADER& response, std::string& display_name)
 		{
 			if (assert_display_name(io, header, response))
 				return false;
 			
-			display_name.resize(header.display_name_size + 1, 0);
+			display_name.resize(header.display_name_size, 0);
 			if (header.display_name_size)
 				io.read(display_name.data(), header.display_name_size);
 			display_name[header.display_name_size] = 0;
@@ -1391,9 +1255,9 @@ free_all:
 			return true;
 		}
 		
-		inline static bool read_data(server_io& io, const HEADER& header, std::string& data)
+		inline static bool read_data(messenger_io& io, const HEADER& header, std::string& data)
 		{
-			data.resize(header.data_size + 1, 0);
+			data.resize(header.data_size, 0);
 			if (header.data_size)
 				io.read(data.data(), header.data_size);
 			data[header.data_size] = 0;
@@ -1448,7 +1312,7 @@ free_all:
 		inline static bool client_processing(inet::inet_io& io, const inet::inet_address& address, inet::server* serv)
 		{
 			auto* this_ptr = static_cast<server*>(serv->extra);
-			return process_request(server_io(io), address, this_ptr);
+			return process_request(messenger_io(io), address, this_ptr);
 		}
 		
 		inline static bool hash_passwd(char** salt_p, char** hash, char* passwd, __detail__::passwd_modes mode)

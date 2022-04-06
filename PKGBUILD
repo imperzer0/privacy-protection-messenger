@@ -1,13 +1,12 @@
 pkgname="privacy-protection-messenger"
-epoch=1
-pkgver=0
-pkgrel=4
+pkgver=1.1
+pkgrel=1
 pkgdesc="secure SSL messenger"
 arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
 license=('GPL')
-depends=("openssl" "iptables-nft")
-makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl")
+depends=("openssl" "iptables-nft" "themispp>=0.14.1")
+makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "libthemis")
 
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
 
@@ -21,7 +20,7 @@ for _libfile in ${_libfiles[@]}
     md5sums=(${md5sums[@]} "SKIP")
 }
 
-_package_version=$pkgname" ("$epoch":"$pkgver"-"$pkgrel")"
+_package_version=$pkgname" ("$pkgver"-"$pkgrel")"
 _var_directory="/var/lib/$pkgname"
 
 build()

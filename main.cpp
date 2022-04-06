@@ -5,6 +5,8 @@
 #include <iostream>
 #include <getopt.h>
 
+#include <themispp/secure_message.hpp>
+
 #define TOSTR(val) #val
 #define TO_STR(val) TOSTR(val)
 #define STDOUT_REDIRECTION_FILE VAR_DIRECTORY "/.stdout"
@@ -150,7 +152,7 @@ void rd_pipe(Container<T>& cont)
 	::read(idatapipe, &size, sizeof size);
 	if (size)
 	{
-		cont.resize(size + 1, 0);
+		cont.resize(size, 0);
 		::read(idatapipe, cont.data(), size);
 	}
 }
@@ -288,8 +290,10 @@ int main(int argc, char** argv)
 				break;
 			case msg::HEADER::s_begin_session:
 			{
-				auto res = cli.begin_session(::login, ::password, status);
+				themispp::secure_key_pair_generator_t<themispp::EC> keypair;
+				auto res = cli.begin_session(::login, ::password, keypair.get_pub(), status);
 				wr_pipe(res);
+				if (res) wr_pipe(keypair.get_priv());
 			}
 				break;
 			case msg::HEADER::s_end_session:
@@ -304,17 +308,36 @@ int main(int argc, char** argv)
 				msg.destination = std::make_unique<std::string>(::metadata);
 				msg.destination_size = msg.destination->size();
 				
-				msg.data = std::make_unique<std::vector<char>>();
+				msg.data = std::make_unique<std::vector<uint8_t>>();
 				rd_pipe(*msg.data);
 				
-				auto res = cli.send_message(::login, ::password, msg, status);
+				std::vector<uint8_t> prikey;
+				rd_pipe(prikey);
+				
+				std::vector<uint8_t> pubkey;
+				auto res = cli.get_pubkey(::login, ::password, ::metadata, pubkey, status);
+				
+				auto message = themispp::secure_message_t(prikey, pubkey);
+				*msg.data = message.encrypt(*msg.data);
+				
+				res = cli.send_message(::login, ::password, msg, status) && res;
 				wr_pipe(res);
 			}
 				break;
 			case msg::HEADER::s_query_incoming:
 			{
 				msg::MESSAGE msg;
+				std::vector<uint8_t> prikey;
+				rd_pipe(prikey);
+				
 				auto res = cli.query_incoming(::login, ::password, msg, status);
+				
+				std::vector<uint8_t> pubkey;
+				res = cli.get_pubkey(::login, ::password, *msg.source, pubkey, status) && res;
+				
+				auto message = themispp::secure_message_t(prikey, pubkey);
+				*msg.data = message.decrypt(*msg.data);
+				
 				wr_pipe(res);
 				wr_pipe(*msg.source);
 				wr_pipe(*msg.data);
