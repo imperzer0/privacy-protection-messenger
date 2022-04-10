@@ -12,7 +12,7 @@ makepkg -sif
 ```
 On other distributions
 ```bash
-. ./PKGBUILD && build && notarch_package
+sudo bash -c ". ./PKGBUILD && build && notarch_package"
 ```
 
 # Usage
