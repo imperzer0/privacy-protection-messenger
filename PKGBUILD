@@ -35,3 +35,12 @@ package()
 	install -Dm644 $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
 	mkdir -pm644 $pkgdir$_var_directory
 }
+
+notarch_package()
+{
+	cp -f $pkgname "$pkgdir/usr/bin/$pkgname"
+	chmod 755 "$pkgdir/usr/bin/$pkgname"
+	cp -f $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
+	chmod 644 "$pkgdir/etc/systemd/system/$pkgname.service"
+	mkdir -pm644 $pkgdir$_var_directory
+}
