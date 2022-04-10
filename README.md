@@ -1,5 +1,5 @@
 # privacy-protection-messenger
-messenger's client and server backend
+Messenger's client and server backend
 
 # Installation
 ```bash
