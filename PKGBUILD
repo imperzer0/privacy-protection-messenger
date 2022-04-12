@@ -6,7 +6,7 @@ arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
 license=('GPL')
 depends=("openssl" "iptables-nft" "themispp>=0.14.1")
-makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "libthemis")
+makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "themispp")
 
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
 
@@ -25,7 +25,7 @@ _var_directory="/var/lib/$pkgname"
 
 build()
 {
-	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DPACKAGE_VERSION=$_package_version -DVAR_DIRECTORY=$_var_directory .
+	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DPACKAGE_VERSION="$_package_version" -DVAR_DIRECTORY=$_var_directory .
 	make
 }
 

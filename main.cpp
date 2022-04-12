@@ -68,7 +68,7 @@ inline static void help(int code)
 	::printf("o  --max-clients|-c  <amount>  maximum clients to process at once\n");
 	
 	::printf("\n General\n");
-	::printf("o  --debug|-D    enable debug mode\n");
+	::printf("o  --debug|-d    enable debug mode\n");
 	::printf("o  --version|-v  print application version\n");
 	::printf("o  --help|-?     print help\n");
 	::printf(COLOR_CYAN "\nDesignation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
