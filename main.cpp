@@ -202,14 +202,14 @@ int main(int argc, char** argv)
 			case 'I':
 			{
 				::idatapipe = ::strtol(optarg, nullptr, 10);
-				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
+//				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
 				break;
 			}
 			
 			case 'O':
 			{
 				::odatapipe = ::strtol(optarg, nullptr, 10);
-				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
+//				::odatapipe = ::fcntl(::odatapipe, F_GETFD);
 				break;
 			}
 			
@@ -305,10 +305,10 @@ int main(int argc, char** argv)
 			case msg::HEADER::s_send_message:
 			{
 				msg::MESSAGE msg;
-				msg.destination = std::make_unique<std::string>(::metadata);
+				msg.destination = new std::string(::metadata);
 				msg.destination_size = msg.destination->size();
 				
-				msg.data = std::make_unique<std::vector<uint8_t>>();
+				msg.data = new std::vector<uint8_t>();
 				rd_pipe(*msg.data);
 				
 				std::vector<uint8_t> prikey;
@@ -317,8 +317,14 @@ int main(int argc, char** argv)
 				std::vector<uint8_t> pubkey;
 				auto res = cli.get_pubkey(::login, ::password, ::metadata, pubkey, status);
 				
+				std::cerr << "PubKey=\"";
+				for (auto&& c: pubkey)
+					std::cerr << c;
+				std::cerr << "\"\n";
+				
 				auto message = themispp::secure_message_t(prikey, pubkey);
 				*msg.data = message.encrypt(*msg.data);
+				msg.data_size = msg.data->size();
 				
 				res = cli.send_message(::login, ::password, msg, status) && res;
 				wr_pipe(res);

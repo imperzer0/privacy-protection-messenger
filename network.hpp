@@ -250,9 +250,9 @@ namespace msg
 	
 	struct MESSAGE
 	{
-		std::unique_ptr<std::string> source = nullptr;
-		std::unique_ptr<std::string> destination = nullptr;
-		std::unique_ptr<std::vector<uint8_t>> data = nullptr;
+		std::string* source = nullptr;
+		std::string* destination = nullptr;
+		std::vector<uint8_t>* data = nullptr;
 		
 		size_t source_size = 0;
 		size_t destination_size = 0;
@@ -261,13 +261,20 @@ namespace msg
 		MESSAGE() = default;
 		
 		MESSAGE(const MESSAGE& msg)
-				: source(msg.source ? std::make_unique<std::string>(*msg.source) : nullptr),
-				  destination(msg.destination ? std::make_unique<std::string>(*msg.destination) : nullptr),
-				  data(msg.data ? std::make_unique<std::vector<uint8_t>>(*msg.data) : nullptr),
+				: source(msg.source ? new std::remove_pointer_t<decltype(source)>(*msg.source) : nullptr),
+				  destination(msg.destination ? new std::remove_pointer_t<decltype(destination)>(*msg.destination) : nullptr),
+				  data(msg.data ? new std::remove_pointer_t<decltype(data)>(*msg.data) : nullptr),
 				  source_size(msg.source->size()),
 				  destination_size(msg.destination->size()),
 				  data_size(msg.data->size())
 		{ }
+		
+		~MESSAGE()
+		{
+			delete source;
+			delete destination;
+			delete data;
+		}
 	};
 	
 	class messenger_io : public inet::inet_io
@@ -287,17 +294,17 @@ namespace msg
 			{
 				if (message.source_size > 0)
 				{
-					message.source = std::make_unique<std::string>(message.source_size, 0);
+					message.source = new std::string(message.source_size, 0);
 					if (read(message.source->data(), message.source_size) != message.source_size)
 						return false;
 				}
 				if (message.destination_size)
 				{
-					message.destination = std::make_unique<std::string>(message.destination_size, 0);
+					message.destination = new std::string(message.destination_size, 0);
 					if (read(message.destination->data(), message.destination_size) != message.destination_size)
 						return false;
 				}
-				message.data = std::make_unique<std::vector<uint8_t>>(message.data_size, 0);
+				message.data = new std::vector<uint8_t>(message.data_size, 0);
 				return read(message.data->data(), message.data_size) == message.data_size;
 			}
 			return false;
@@ -328,19 +335,14 @@ namespace msg
 		
 		inline bool write(MESSAGE& message)
 		{
-			message.source_size = message.source->size();
-			message.destination_size = message.destination->size();
-			message.data_size = message.data->size();
-			return write(static_cast<const MESSAGE&>(message));
-		}
-		
-		inline bool write(const MESSAGE& message)
-		{
+			if (message.source) message.source_size = message.source->size();
+			if (message.destination) message.destination_size = message.destination->size();
 			if (message.data && !message.data->empty())
 			{
+				message.data_size = message.data->size();
 				write(&message, sizeof message);
-				if (message.source_size > 0) write(message.source->c_str(), message.source_size);
-				if (message.destination_size > 0) write(message.destination->c_str(), message.destination_size);
+				if (message.source_size > 0) write(message.source->data(), message.source_size);
+				if (message.destination_size > 0) write(message.destination->data(), message.destination_size);
 				write(message.data->data(), message.data_size);
 				return true;
 			}
@@ -353,6 +355,12 @@ namespace msg
 			size_t size = cont.size();
 			write(&size, sizeof size);
 			if (size > 0) write(cont.data(), size);
+		}
+		
+		template <template <typename> typename Container, typename T>
+		inline void write_raw(const Container<T>& cont)
+		{
+			if (cont.size() > 0) write(cont.data(), cont.size());
 		}
 		
 		template <typename T>
@@ -499,9 +507,9 @@ namespace msg
 		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_register_user, login.size(), password.size(), display_name.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(display_name);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(display_name);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -522,9 +530,9 @@ namespace msg
 		inline bool set_password(const std::string& login, const std::string& password, const std::string& new_password, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_set_password, login.size(), password.size(), 0, new_password.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(new_password);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(new_password);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -545,9 +553,9 @@ namespace msg
 		inline bool set_display_name(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_set_display_name, login.size(), password.size(), display_name.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(display_name);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(display_name);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -567,8 +575,8 @@ namespace msg
 		inline bool get_display_name(const std::string& login, const std::string& password, std::string& display_name, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_get_display_name, login.size(), password.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -590,8 +598,8 @@ namespace msg
 		inline bool begin_session(const std::string& login, const std::string& password, const std::vector<uint8_t>& pubkey, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_begin_session, login.size(), password.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
 			messenger_io::write(pubkey);
 			HEADER res;
 			if (messenger_io::read(res))
@@ -613,8 +621,8 @@ namespace msg
 		inline bool end_session(const std::string& login, const std::string& password, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_end_session, login.size(), password.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -634,10 +642,10 @@ namespace msg
 		inline bool get_pubkey(
 				const std::string& login, const std::string& password, const std::string& target, std::vector<uint8_t>& pubkey, std::string& status)
 		{
-			messenger_io::write(HEADER{HEADER::s_get_pubkey, login.size(), password.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(target);
+			messenger_io::write(HEADER{HEADER::s_get_pubkey, login.size(), password.size(), 0, target.size()});
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(target);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -656,15 +664,16 @@ namespace msg
 		}
 		
 		inline bool send_message(
-				const std::string& login, const std::string& password, const MESSAGE& message, std::string& status)
+				const std::string& login, const std::string& password, MESSAGE& message, std::string& status)
 		{
 			size_t message_size = sizeof message;
+			message.source = nullptr;
 			if (message.destination) message_size += message.destination->size();
 			if (message.data) message_size += message.data->size();
 			
 			messenger_io::write(HEADER{HEADER::s_send_message, login.size(), password.size(), 0, message_size});
-			messenger_io::write(login);
-			messenger_io::write(password);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
 			messenger_io::write(message);
 			HEADER res;
 			if (messenger_io::read(res))
@@ -685,13 +694,9 @@ namespace msg
 		inline bool query_incoming(
 				const std::string& login, const std::string& password, MESSAGE& message, std::string& status)
 		{
-			size_t message_size = sizeof message;
-			if (message.destination) message_size += message.destination->size();
-			if (message.data) message_size += message.data->size();
-			
-			messenger_io::write(HEADER{HEADER::s_query_incoming, login.size(), password.size(), 0, message_size});
-			messenger_io::write(login);
-			messenger_io::write(password);
+			messenger_io::write(HEADER{HEADER::s_query_incoming, login.size(), password.size()});
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -712,9 +717,9 @@ namespace msg
 				const std::string& login, const std::string& password, const std::string& another_user, bool& online_status, std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_check_online_status, login.size(), password.size(), 0, another_user.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(another_user);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(another_user);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -737,9 +742,9 @@ namespace msg
 				std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_find_users_by_display_name, login.size(), password.size(), display_name.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(display_name);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(display_name);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -773,9 +778,9 @@ namespace msg
 				std::string& status)
 		{
 			messenger_io::write(HEADER{HEADER::s_find_users_by_login, login.size(), password.size(), 0, another_user.size()});
-			messenger_io::write(login);
-			messenger_io::write(password);
-			messenger_io::write(another_user);
+			messenger_io::write_raw(login);
+			messenger_io::write_raw(password);
+			messenger_io::write_raw(another_user);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -823,15 +828,9 @@ namespace msg
 		
 		MESSAGES(MESSAGES&&) = delete;
 		
-		bool put_message(const std::string& user, const MESSAGE& message)
+		void put_message(const std::string& user, const MESSAGE& message)
 		{
-			auto user_it = incoming.find(user);
-			if (user_it != incoming.end())
-			{
-				user_it->second.push_back(message);
-				return true;
-			}
-			return false;
+			incoming[user].push_back(message);
 		}
 		
 		bool message_available(const std::string& user)
@@ -1029,10 +1028,13 @@ namespace msg
 							{
 								if (user->second.is_session_running)
 								{
-									message.source = std::make_unique<std::string>(user->first);
+									message.source = new std::string(user->first);
 									message.source_size = user->first.size();
-									if (incoming.put_message(*message.destination, message))
+									if (users.contains(*message.destination))
+									{
+										incoming.put_message(*message.destination, message);
 										response.err = HEADER::e_success;
+									}
 									else
 										response.err = HEADER::e_user_not_found;
 								}
@@ -1152,6 +1154,7 @@ namespace msg
 					}
 				}
 			}
+			io.write(response);
 			return false;
 		}
 		
@@ -1220,12 +1223,10 @@ namespace msg
 			login.resize(header.login_size, 0);
 			if (header.login_size)
 				io.read(login.data(), header.login_size);
-			login[header.login_size] = 0;
 			
 			password.resize(header.password_size, 0);
 			if (header.password_size)
 				io.read(password.data(), header.password_size);
-			password[header.password_size] = 0;
 			
 			return true;
 		}
