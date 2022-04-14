@@ -1,5 +1,5 @@
 pkgname="privacy-protection-messenger"
-pkgver=1.1
+pkgver=1.2
 pkgrel=1
 pkgdesc="secure SSL messenger"
 arch=("x86_64")
