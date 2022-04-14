@@ -992,7 +992,6 @@ namespace msg
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							user->second.pubkey = { };
 							user->second.is_session_running = false;
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;

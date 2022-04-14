@@ -148,7 +148,7 @@ void rd_pipe(T& val)
 template <template <typename> typename Container, typename T>
 void rd_pipe(Container<T>& cont)
 {
-	size_t size;
+	size_t size = 0;
 	::read(idatapipe, &size, sizeof size);
 	if (size)
 	{
@@ -341,10 +341,11 @@ int main(int argc, char** argv)
 				std::vector<uint8_t> pubkey;
 				res = cli.get_pubkey(::login, ::password, *msg.source, pubkey, status) && res;
 				
+				wr_pipe(res);
+				
 				auto message = themispp::secure_message_t(prikey, pubkey);
 				*msg.data = message.decrypt(*msg.data);
 				
-				wr_pipe(res);
 				wr_pipe(*msg.source);
 				wr_pipe(*msg.data);
 			}
