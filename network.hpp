@@ -144,31 +144,6 @@ namespace msg
 		
 		inline static bool contains(const char* str, const char* substr);
 	}
-	
-	class mariadb_manager
-	{
-	public:
-		inline mariadb_manager(const std::string& login, const std::string& password)
-		{
-			/// TODO: Connect to localhost mariadb using login and password
-		}
-		
-		inline int setup(const std::string& table_name)
-		{
-			/// TODO: Create mariadb table with corresponding columns
-			/// Must return application exit code
-		}
-		
-		/// TODO: Create user management functions
-		
-		inline ~mariadb_manager()
-		{
-			/// TODO: Disconnect from mariadb
-		}
-	
-	private:
-		std::unique_ptr<sql::Connection> connection = nullptr;
-	};
 
 #define SIGNAL_NAME(sig) #sig
 	
@@ -906,6 +881,50 @@ namespace msg
 			std::string display_name;
 			bool is_session_running = false;
 			std::vector<uint8_t> pubkey;
+		};
+		
+		class mariadb_manager
+		{
+		public:
+			inline mariadb_manager(const std::string& login, const std::string& password)
+			{
+				/// TODO: Connect to localhost mariadb using login and password
+			}
+			
+			inline int setup(const std::string& table_name)
+			{
+				/// TODO: Create mariadb table with corresponding columns
+				/// Must return application exit code
+			}
+			
+			inline bool save_user(const std::string& login, const USER_DATA& userdata)
+			{
+				/// TODO: Save user into database or overwrite if exists
+			}
+			
+			inline bool load_user(const std::string& login)
+			{
+				/// TODO: Get user from database by login and save into users map
+			}
+			
+			inline bool unload_user(const std::string& login)
+			{
+				auto user = users.find(login);
+				if (user != users.end())
+				{
+					users.erase(user);
+					return true;
+				}
+				return false;
+			}
+			
+			inline ~mariadb_manager()
+			{
+				/// TODO: Disconnect from mariadb
+			}
+		
+		private:
+			std::unique_ptr<sql::Connection> connection = nullptr;
 		};
 		
 		
