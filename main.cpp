@@ -16,6 +16,9 @@ static bool debug = false;
 static char* appname = nullptr;
 
 static int max_clients = 10;
+static const char* mariadb_login = "ppmadmin";
+static const char* mariadb_password = COLOR_CYAN "uIaBycFQyYRDOXbXo.JyM0" COLOR_RESET;
+static bool setup_mariadb = false;
 
 static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
 
@@ -40,6 +43,9 @@ const option l_options[]{
 		{"odatapipe",   required_argument, nullptr, 'O'},
 		
 		{"max-clients", required_argument, nullptr, 'c'},
+		{"setup-db",    required_argument, nullptr, 1},
+		{"dblogin",     required_argument, nullptr, 2},
+		{"dbpassword",  required_argument, nullptr, 3},
 		
 		{"debug",       no_argument,       nullptr, 'd'},
 		{"version",     no_argument,       nullptr, 'v'},
@@ -47,115 +53,25 @@ const option l_options[]{
 		{nullptr}
 };
 
-inline static void help(int code)
-{
-	::printf(COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET " [OPTIONS]\n" COLOR_YELLOW, appname);
-	
-	::printf("\nOptions:\n");
-	::printf("m  --mode|-m         CLIENT/SERVER  client or server mode\n");
-	
-	::printf("\n For CLIENT mode\n");
-	::printf("m  --address|-a      <IP>         server ip address\n");
-	::printf("m  --operation|-o    <operation>  perform operation\n");
-	::printf("m  --login|-l        <login>      login\n");
-	::printf("m  --password|-p     <password>   password\n");
-	::printf("o  --metadata|-M     <data>       undefined purpose data\n");
-	::printf("o  --idatapipe|-I    <pipedes>    message data transfer pipe - input\n");
-	::printf("o  --odatapipe|-O    <pipedes>    message data transfer pipe - output\n");
-	
-	::printf("\n For SERVER mode\n");
-	::printf("o  --address|-a      <IP>      server ip address\n");
-	::printf("o  --max-clients|-c  <amount>  maximum clients to process at once\n");
-	
-	::printf("\n General\n");
-	::printf("o  --debug|-d    enable debug mode\n");
-	::printf("o  --version|-v  print application version\n");
-	::printf("o  --help|-?     print help\n");
-	::printf(COLOR_CYAN "\nDesignation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
-	
-	::exit(code);
-}
+inline static void help(int code);
 
-inline static void daemonize_application()
-{
-	/* Set new file permissions */
-	::umask(0);
-	
-	/* Close all open file descriptors */
-	for (int fd = ::sysconf(_SC_OPEN_MAX); fd > 0; --fd)
-		::close(fd);
-	
-	/* Redirect stdout and stderr */
-	stdout = ::fopen(STDOUT_REDIRECTION_FILE, "wb");
-	stderr = ::fopen(STDERR_REDIRECTION_FILE, "wb");
-	
-	/* Open syslog */
-	::openlog(appname, LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
-}
+inline static void daemonize_application();
 
-inline static void sighandle_close_port(int sig)
-{
-	::syslog(LOG_DEBUG, "Closing port %hu in iptables...", address.get_port());
-	inet::close_port_in_iptables(address.get_port());
-	::syslog(LOG_ERR, "SIG%s happened!\n  What: %s", ::sigabbrev_np(sig), ::sigdescr_np(sig));
-	::exit(sig);
-}
+inline static void sighandle_close_port(int sig);
 
-inline static void run_server()
-{
-	::signal(SIGPIPE, sighandle_close_port);
-	::signal(SIGTERM, sighandle_close_port);
-	
-	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
-	inet::open_port_in_iptables(address.get_port());
-	
-	auto serv = msg::server::create_server(max_clients, address);
-	
-	if (serv == nullptr)
-	{
-		::syslog(LOG_ERR, "Failed to create certificates.");
-		::exit(-3);
-	}
-	
-	::syslog(LOG_INFO, "Starting server on %s:%hu...", address.get_address(), address.get_port());
-	if (!serv->run())
-	{
-		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
-		::exit(-1);
-	}
-}
+inline static void run_server();
 
 template <typename T>
-void wr_pipe(const T& val)
-{
-	::write(odatapipe, &val, sizeof val);
-}
+inline static void wr_pipe(const T& val);
 
 template <template <typename> typename Container, typename T>
-void wr_pipe(const Container<T>& cont)
-{
-	size_t size = cont.size();
-	::write(odatapipe, &size, sizeof size);
-	if (size > 0) ::write(odatapipe, cont.data(), size);
-}
+inline static void wr_pipe(const Container<T>& cont);
 
 template <typename T>
-void rd_pipe(T& val)
-{
-	::read(idatapipe, &val, sizeof val);
-}
+inline static void rd_pipe(T& val);
 
 template <template <typename> typename Container, typename T>
-void rd_pipe(Container<T>& cont)
-{
-	size_t size = 0;
-	::read(idatapipe, &size, sizeof size);
-	if (size)
-	{
-		cont.resize(size, 0);
-		::read(idatapipe, cont.data(), size);
-	}
-}
+inline static void rd_pipe(Container<T>& cont);
 
 int main(int argc, char** argv)
 {
@@ -202,14 +118,12 @@ int main(int argc, char** argv)
 			case 'I':
 			{
 				::idatapipe = ::strtol(optarg, nullptr, 10);
-//				::idatapipe = ::fcntl(::idatapipe, F_GETFD);
 				break;
 			}
 			
 			case 'O':
 			{
 				::odatapipe = ::strtol(optarg, nullptr, 10);
-//				::odatapipe = ::fcntl(::odatapipe, F_GETFD);
 				break;
 			}
 			
@@ -222,6 +136,24 @@ int main(int argc, char** argv)
 			case 'c':
 			{
 				::max_clients = ::strtol(optarg, nullptr, 10);
+				break;
+			}
+			
+			case 1:
+			{
+				::setup_mariadb = true;
+				break;
+			}
+			
+			case 2:
+			{
+				::mariadb_login = ::strdup(optarg);
+				break;
+			}
+			
+			case 3:
+			{
+				::mariadb_password = ::strdup(optarg);
 				break;
 			}
 			
@@ -247,6 +179,16 @@ int main(int argc, char** argv)
 				::help(-2);
 			}
 		}
+	}
+	
+	if (::setup_mariadb)
+	{
+		int exit_code;
+		{
+			msg::mariadb_manager manager(::mariadb_login, ::mariadb_password);
+			exit_code = manager.setup(optarg);
+		}
+		::exit(exit_code);
 	}
 	
 	SSL_library_init();
@@ -386,4 +328,120 @@ int main(int argc, char** argv)
 	}
 	
 	return 0;
+}
+
+
+void help(int code)
+{
+	::printf(COLOR_RESET "Usage: " COLOR_MAGENTA "\"%s\"" COLOR_RESET " -m " COLOR_BLUE "<mode>" COLOR_RESET " [OPTIONS]\n" COLOR_YELLOW, appname);
+	
+	::printf("\nOptions:\n");
+	::printf("m  --mode|-m         CLIENT/SERVER  client or server mode\n");
+	
+	::printf("\n For CLIENT mode\n");
+	::printf("m  --address|-a      <IP>         server ip address\n");
+	::printf("m  --operation|-o    <operation>  perform operation\n");
+	::printf("m  --login|-l        <login>      login\n");
+	::printf("m  --password|-p     <password>   password\n");
+	::printf("o  --metadata|-M     <data>       undefined purpose data\n");
+	::printf("o  --idatapipe|-I    <pipedes>    message data transfer pipe - input\n");
+	::printf("o  --odatapipe|-O    <pipedes>    message data transfer pipe - output\n");
+	
+	::printf("\n For SERVER mode\n");
+	::printf("o  --address|-a      <IP>        server ip address\n");
+	::printf("o  --max-clients|-c  <amount>    maximum clients to process at once\n");
+	::printf("o  --setup-db        <name>      create table for users in mariadb database\n");
+	::printf("o  --dblogin         <login>     database user login\n");
+	::printf("o  --dbpassword      <password>  database user password\n");
+	
+	::printf("\n General\n");
+	::printf("o  --debug|-d    enable debug mode\n");
+	::printf("o  --version|-v  print application version\n");
+	::printf("o  --help|-?     print help\n");
+	::printf(COLOR_CYAN "\nDesignation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
+	
+	::exit(code);
+}
+
+
+void daemonize_application()
+{
+	/* Set new file permissions */
+	::umask(0);
+	
+	/* Close all open file descriptors */
+	for (int fd = ::sysconf(_SC_OPEN_MAX); fd > 0; --fd)
+		::close(fd);
+	
+	/* Redirect stdout and stderr */
+	stdout = ::fopen(STDOUT_REDIRECTION_FILE, "wb");
+	stderr = ::fopen(STDERR_REDIRECTION_FILE, "wb");
+	
+	/* Open syslog */
+	::openlog(appname, LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
+}
+
+void sighandle_close_port(int sig)
+{
+	::syslog(LOG_DEBUG, "Closing port %hu in iptables...", address.get_port());
+	inet::close_port_in_iptables(address.get_port());
+	::syslog(LOG_ERR, "SIG%s happened!\n  What: %s", ::sigabbrev_np(sig), ::sigdescr_np(sig));
+	::exit(sig);
+}
+
+void run_server()
+{
+	::signal(SIGPIPE, sighandle_close_port);
+	::signal(SIGTERM, sighandle_close_port);
+	
+	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
+	inet::open_port_in_iptables(address.get_port());
+	
+	auto serv = msg::server::create_server(max_clients, address);
+	
+	if (serv == nullptr)
+	{
+		::syslog(LOG_ERR, "Failed to create certificates.");
+		::exit(-3);
+	}
+	
+	::syslog(LOG_INFO, "Starting server on %s:%hu...", address.get_address(), address.get_port());
+	if (!serv->run())
+	{
+		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
+		::exit(-1);
+	}
+}
+
+
+template <typename T>
+inline static void wr_pipe(const T& val)
+{
+	::write(odatapipe, &val, sizeof val);
+}
+
+template <typename T>
+inline static void rd_pipe(T& val)
+{
+	::read(idatapipe, &val, sizeof val);
+}
+
+template <typename Container, typename T>
+inline static void wr_pipe(const Container& cont)
+{
+	size_t size = cont.size();
+	::write(odatapipe, &size, sizeof size);
+	if (size > 0) ::write(odatapipe, cont.data(), size);
+}
+
+template <typename Container, typename T>
+inline static void rd_pipe(Container& cont)
+{
+	size_t size = 0;
+	::read(idatapipe, &size, sizeof size);
+	if (size)
+	{
+		cont.resize(size, 0);
+		::read(idatapipe, cont.data(), size);
+	}
 }

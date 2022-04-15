@@ -5,8 +5,8 @@ pkgdesc="secure SSL messenger"
 arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
 license=('GPL')
-depends=("openssl" "iptables-nft" "themispp>=0.14.1")
-makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "themispp")
+depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb")
+makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
 
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
 

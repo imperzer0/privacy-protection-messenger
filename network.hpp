@@ -13,6 +13,7 @@
 # include <memory>
 # include <sys/wait.h>
 # include <vector>
+# include <mariadb/conncpp.hpp>
 
 #define ERR_COLOR color::red
 
@@ -143,7 +144,31 @@ namespace msg
 		
 		inline static bool contains(const char* str, const char* substr);
 	}
-
+	
+	class mariadb_manager
+	{
+	public:
+		inline mariadb_manager(const std::string& login, const std::string& password)
+		{
+			/// TODO: Connect to localhost mariadb using login and password
+		}
+		
+		inline int setup(const std::string& table_name)
+		{
+			/// TODO: Create mariadb table with corresponding columns
+			/// Must return application exit code
+		}
+		
+		/// TODO: Create user management functions
+		
+		inline ~mariadb_manager()
+		{
+			/// TODO: Disconnect from mariadb
+		}
+	
+	private:
+		std::unique_ptr<sql::Connection> connection = nullptr;
+	};
 
 #define SIGNAL_NAME(sig) #sig
 	

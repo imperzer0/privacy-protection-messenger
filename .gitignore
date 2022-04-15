@@ -3,5 +3,5 @@
 /pkg/
 /src/
 /*.pkg.tar.zst
-/cert/
+*/cert/
 /*.pem
