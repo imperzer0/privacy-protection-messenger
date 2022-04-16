@@ -4,7 +4,7 @@ pkgrel=1
 pkgdesc="secure SSL messenger"
 arch=("x86_64")
 url="https://github.com/imperzer0/privacy-protection-messenger"
-license=('GPL')
+license=('GPL3')
 depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb")
 makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
 
