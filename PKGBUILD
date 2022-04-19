@@ -1,18 +1,20 @@
 pkgname="privacy-protection-messenger"
 pkgver=1.2
 pkgrel=1
-pkgdesc="secure SSL messenger"
+pkgdesc="Secure messenger backend"
+author="imperzer0"
+url="https://github.com/$author/$pkgname"
 arch=("x86_64")
-url="https://github.com/imperzer0/privacy-protection-messenger"
 license=('GPL3')
 depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb")
 makedepends=("cmake>=3.0" "inet-comm>=3.6-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
 
+_srcprefix="local:/"
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
 
 for _libfile in ${_libfiles[@]}
 {
-    source=(${source[@]} "local://$_libfile")
+    source=(${source[@]} "$_srcprefix/$_libfile")
 }
 
 for _libfile in ${_libfiles[@]}

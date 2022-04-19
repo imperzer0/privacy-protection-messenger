@@ -882,7 +882,8 @@ namespace msg
 			bool is_session_running = false;
 			std::vector<uint8_t> pubkey;
 		};
-		
+	
+	public:
 		class mariadb_manager
 		{
 		public:
@@ -926,6 +927,8 @@ namespace msg
 		private:
 			std::unique_ptr<sql::Connection> connection = nullptr;
 		};
+	
+	private:
 		
 		
 		static std::map<std::string, USER_DATA> users;
