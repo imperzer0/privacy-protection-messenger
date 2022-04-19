@@ -62,16 +62,36 @@ inline static void sighandle_close_port(int sig);
 inline static void run_server();
 
 template <typename T>
-inline static void wr_pipe(const T& val);
-
-template <template <typename> typename Container, typename T>
-inline static void wr_pipe(const Container<T>& cont);
+inline static void wr_pipe(const T& val)
+{
+	::write(odatapipe, &val, sizeof val);
+}
 
 template <typename T>
-inline static void rd_pipe(T& val);
+inline static void rd_pipe(T& val)
+{
+	::read(idatapipe, &val, sizeof val);
+}
 
-template <template <typename> typename Container, typename T>
-inline static void rd_pipe(Container<T>& cont);
+template <typename Container, typename T>
+inline static void wr_pipe(const Container& cont)
+{
+	size_t size = cont.size();
+	::write(odatapipe, &size, sizeof size);
+	if (size > 0) ::write(odatapipe, cont.data(), size);
+}
+
+template <typename Container, typename T>
+inline static void rd_pipe(Container& cont)
+{
+	size_t size = 0;
+	::read(idatapipe, &size, sizeof size);
+	if (size)
+	{
+		cont.resize(size, 0);
+		::read(idatapipe, cont.data(), size);
+	}
+}
 
 int main(int argc, char** argv)
 {
@@ -410,38 +430,5 @@ void run_server()
 	{
 		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
 		::exit(-1);
-	}
-}
-
-
-template <typename T>
-inline static void wr_pipe(const T& val)
-{
-	::write(odatapipe, &val, sizeof val);
-}
-
-template <typename T>
-inline static void rd_pipe(T& val)
-{
-	::read(idatapipe, &val, sizeof val);
-}
-
-template <typename Container, typename T>
-inline static void wr_pipe(const Container& cont)
-{
-	size_t size = cont.size();
-	::write(odatapipe, &size, sizeof size);
-	if (size > 0) ::write(odatapipe, cont.data(), size);
-}
-
-template <typename Container, typename T>
-inline static void rd_pipe(Container& cont)
-{
-	size_t size = 0;
-	::read(idatapipe, &size, sizeof size);
-	if (size)
-	{
-		cont.resize(size, 0);
-		::read(idatapipe, cont.data(), size);
 	}
 }
