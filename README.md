@@ -1,35 +1,35 @@
 # privacy-protection-messenger
 Messenger's client and server backend
 
-<h2>Installation</h2>
+## Installation
 
-<h3>From AUR</h3>
+### From AUR
 ```bash
 yay -Sy privacy-protection-messenger
 ```
 
-<h3>From repository</h3>
+### From repository
 ```bash
 git clone https://github.com/imperzer0/privacy-protection-messenger.git
 cd privacy-protection-messenger
 ```
 
-<h4>Archlinux</h4>
+#### Archlinux
 ```bash
 makepkg -sif
 ```
 
-<h4>Other distributions</h4>
+#### Other distributions
 ```bash
 sudo bash -c ". ./PKGBUILD && build && notarch_package"
 ```
 
-<h2>Usage</h2>
+## Usage
 
-<h3>Client</h3>
+### Client
 Install https://github.com/imperzer0/privacy-protection-messenger-qt to use backend in client mode.
 
-<h3>Server</h3>
+### Server
 ```bash
 sudo systemctl enable privacy-protection-messenger.service --now
 ```
