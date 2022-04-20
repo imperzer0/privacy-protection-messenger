@@ -890,26 +890,75 @@ namespace msg
 	public:
 		class mariadb_manager
 		{
+        private: std::string table_name;
 		public:
-			inline mariadb_manager(const std::string& login, const std::string& password)
+			/*inline mariadb_manager(const std::string& login, const std::string& password)
 			{
-				/// TODO: Connect to localhost mariadb using login and password
-			}
+                sql::Driver* driver = sql::mariadb::get_driver_instance();
+                sql::SQLString url("jdbc:mariadb://localhost/ppt");
+                sql::Properties properties({{"root", login}, {password, password}});
+
+			}*/
 			
-			inline int setup(const std::string& table_name)
-			{
-				/// TODO: Create mariadb table with corresponding columns
-				/// Must return application exit code
+            inline bool setup(std::unique_ptr<sql::Connection> &conn, const std::string& table_name) {
+                this->table_name = table_name;
+                try {
+                    // Create a new PreparedStatement
+                    std::unique_ptr<sql::PreparedStatement> stmnt(conn->
+                        prepareStatement("create table " + table_name + " "
+                        "("
+                        "id_user int(10) AUTO_INCREMENT PRIMARY KEY,"
+                        "display_name varchar(20) NOT NULL,"
+                        "login varchar(15) NOT NULL,"
+                        "salt TEXT NOT NULL,"
+                        "password varchar(20) NOT NULL"
+                        ");"
+                        ));
+                    stmnt->executeQuery();
+                    return 0;
+                }
+                catch(sql::SQLException& e){
+                  std::cerr << "Error in func setup: " << e.what() << std::endl;
+                  return 1;
+               }
+            }
 			}
 			
 			inline bool save_user(const std::string& login, const USER_DATA& userdata)
 			{
-				/// TODO: Save user into database or overwrite if exists
+                try {
+                    std::unique_ptr<sql::PreparedStatement> stmnt(conn->
+                    prepareStatement("insert into " + this->table_name +
+                                     " (display_name, login, salt, password) values('" +userdata.display_name + "','" + login + "','"
+                                     + userdata.salt + "','" + userdata.password + "');"
+                    ));
+                stmnt->executeQuery();
+                return 0;
+                    }
+                catch(sql::SQLException& e){
+                     std::cerr << "Error in func save_user: " << e.what() << std::endl;
+                    return 1;
+                 }
 			}
 			
 			inline bool load_user(const std::string& login)
 			{
-				/// TODO: Get user from database by login and save into users map
+                try {
+                    // Create a new PreparedStatement
+                    std::unique_ptr<sql::Statement> stmnt(conn->createStatement());
+                    // Execute query
+                    sql::ResultSet *res = stmnt->executeQuery("select * from " + this.table_name + " where login='" + login + "'");
+                    res->next();
+
+                    std::string salt = res->getString(4).c_str();
+                    std::string password = res->getString(5).c_str();
+                    std::string display_name = res->getString(2).c_str();
+                    return 0;
+                }
+                catch(sql::SQLException& e){
+                  std::cerr << "Error in func load_user: " << e.what() << std::endl;
+                  return 1;
+               }
 			}
 			
 			inline bool unload_user(const std::string& login)
@@ -923,10 +972,18 @@ namespace msg
 				return false;
 			}
 			
-			inline ~mariadb_manager()
-			{
-				/// TODO: Disconnect from mariadb
-			}
+            inline bool mariadb_manager_close(std::unique_ptr<sql::Connection> &conn)
+           {
+               try {
+                   conn->close();
+                   return true;
+                   return 0;
+               }
+               catch(sql::SQLException& e) {
+                 std::cerr << "Error in func mariadb_manager_close: " << e.what() << std::endl;
+                 return 1;
+              }
+           }
 		
 		private:
 			std::unique_ptr<sql::Connection> connection = nullptr;
