@@ -879,6 +879,10 @@ namespace msg
 			std::string salt;
 			std::string password;
 			std::string display_name;
+		};
+		
+		struct USER_STATUS
+		{
 			bool is_session_running = false;
 			std::vector<uint8_t> pubkey;
 		};
@@ -929,8 +933,7 @@ namespace msg
 		};
 	
 	private:
-		
-		
+		static std::map<std::string, USER_STATUS> statuses;
 		static std::map<std::string, USER_DATA> users;
 		static MESSAGES incoming;
 		
@@ -1027,8 +1030,8 @@ namespace msg
 						{
 							std::vector<uint8_t> pubkey;
 							io.read(pubkey);
-							user->second.pubkey = pubkey;
-							user->second.is_session_running = true;
+							statuses[user->first].pubkey = pubkey;
+							statuses[user->first].is_session_running = true;
 							::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
@@ -1039,7 +1042,7 @@ namespace msg
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							user->second.is_session_running = false;
+							statuses[user->first].is_session_running = false;
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
@@ -1052,8 +1055,8 @@ namespace msg
 						{
 							std::string target;
 							read_data(io, header, target);
-							auto target_it = users.find(target);
-							if (target_it != users.end())
+							auto target_it = statuses.find(target);
+							if (target_it != statuses.end())
 							{
 								response.err = HEADER::e_success;
 								io.write(response);
@@ -1072,7 +1075,7 @@ namespace msg
 							MESSAGE message;
 							if (io.read(message))
 							{
-								if (user->second.is_session_running)
+								if (statuses[user->first].is_session_running)
 								{
 									message.source = new std::string(user->first);
 									message.source_size = user->first.size();
@@ -1093,7 +1096,7 @@ namespace msg
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, user))
 						{
-							if (user->second.is_session_running)
+							if (statuses[user->first].is_session_running)
 							{
 								if (incoming.message_available(user->first))
 								{
@@ -1118,8 +1121,8 @@ namespace msg
 						{
 							if (check_credentials(response, login, password, user))
 							{
-								auto target_user = users.find(target);
-								if (target_user != users.end())
+								auto target_user = statuses.find(target);
+								if (target_user != statuses.end())
 								{
 									response.data_size = sizeof(bool);
 									response.err = HEADER::e_success;
