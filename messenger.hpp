@@ -2,8 +2,8 @@
 // Created by imper on 2/14/22.
 //
 
-#ifndef PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
-# define PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
+#ifndef PRIVACY_PROTECTION_MESSENGER_MESSENGER_HPP
+# define PRIVACY_PROTECTION_MESSENGER_MESSENGER_HPP
 
 # include <inet-comm>
 # include <deque>
@@ -12,82 +12,13 @@
 # include <sys/stat.h>
 # include <memory>
 # include <sys/wait.h>
-#include <utility>
+# include <utility>
 # include <vector>
 # include <mariadb/conncpp.hpp>
 
+# include "constants.hpp"
+
 #define ERR_COLOR color::red
-
-# define _STR(s) #s
-# define MACRO_STR(v) _STR(v)
-
-# ifndef MESSENGER_NAME
-#  define MESSENGER_NAME "privacy-protection-messenger"
-# endif
-
-# ifndef CERTIFICATE_DIR
-#  define CERTIFICATE_DIR "cert/"
-# endif
-
-# ifndef CERTIFICATE_PATH
-#  define CERTIFICATE_PATH CERTIFICATE_DIR"certificate.pem"
-# endif
-
-# ifndef PRIVATE_KEY_PATH
-#  define PRIVATE_KEY_PATH CERTIFICATE_DIR"key.pem"
-# endif
-
-# ifndef COUNTRY
-#  define COUNTRY "UA"
-# endif
-
-# ifndef ORGANIZATION
-#  define ORGANIZATION "imper"
-# endif
-
-# ifndef CERTIFICATE_NAME
-#  define CERTIFICATE_NAME "imper"
-# endif
-
-# ifndef MAX_LOGIN
-#  define MAX_LOGIN 63
-# endif
-
-# ifndef MAX_PASSWORD
-#  define MAX_PASSWORD 127
-# endif
-
-# ifndef MAX_DISPLAY_NAME
-#  define MAX_DISPLAY_NAME 127
-# endif
-
-# ifndef CONFIG_DIR
-#  define CONFIG_DIR "/etc/" MESSENGER_NAME
-# endif
-
-# ifndef DEFAULT_USERS_FILE
-#  define DEFAULT_USERS_FILE CONFIG_DIR "/users"
-# endif
-
-# ifndef DEFAULT_WORK_DIR
-#  define DEFAULT_WORK_DIR "/tmp/" MESSENGER_NAME
-# endif
-
-# ifndef PASSWD_HASH_TYPE
-#  define PASSWD_HASH_TYPE passwd_sha512
-# endif
-
-# ifndef DEFAULT_PORT
-#  define DEFAULT_PORT 14882
-# endif
-
-# ifndef DEFAULT_SERVER_ADDRESS
-#  define DEFAULT_SERVER_ADDRESS INADDR_ANY
-# endif
-
-# ifndef MAX_USER_ENTRIES_AMOUNT
-#  define MAX_USER_ENTRIES_AMOUNT 100ul
-# endif
 
 # define E_DERANGED "Server is deranged. This is a bug report it!"
 # define E_SUCCESS "Success."
@@ -110,7 +41,6 @@
 
 namespace msg
 {
-	static const char* users_file = DEFAULT_USERS_FILE;
 	static const char* work_dir = DEFAULT_WORK_DIR;
 	static bool verbose = false;
 	
@@ -148,8 +78,6 @@ namespace msg
 		
 		inline static bool contains(const char* str, const char* substr);
 	}
-
-#define SIGNAL_NAME(sig) #sig
 	
 	struct HEADER
 	{
@@ -173,58 +101,50 @@ namespace msg
 		
 		inline static const char* signal_to_name(signal sig)
 		{
-			if (sig == s_register_user)
-				return SIGNAL_NAME(s_register_user);
-			else if (sig == s_set_password)
-				return SIGNAL_NAME(s_set_password);
-			else if (sig == s_set_display_name)
-				return SIGNAL_NAME(s_set_display_name);
-			else if (sig == s_get_display_name)
-				return SIGNAL_NAME(s_get_display_name);
-			else if (sig == s_begin_session)
-				return SIGNAL_NAME(s_begin_session);
-			else if (sig == s_end_session)
-				return SIGNAL_NAME(s_end_session);
-			else if (sig == s_get_pubkey)
-				return SIGNAL_NAME(s_get_pubkey);
-			else if (sig == s_send_message)
-				return SIGNAL_NAME(s_send_message);
-			else if (sig == s_query_incoming)
-				return SIGNAL_NAME(s_query_incoming);
-			else if (sig == s_check_online_status)
-				return SIGNAL_NAME(s_check_online_status);
-			else if (sig == s_find_users_by_display_name)
-				return SIGNAL_NAME(s_find_users_by_display_name);
-			else if (sig == s_find_users_by_login)
-				return SIGNAL_NAME(s_find_users_by_login);
-			else return SIGNAL_NAME(s_zero);
+			switch (sig)
+			{
+				CASE_TO_STR(s_register_user)
+				CASE_TO_STR(s_set_password)
+				CASE_TO_STR(s_set_display_name)
+				CASE_TO_STR(s_get_display_name)
+				CASE_TO_STR(s_begin_session)
+				CASE_TO_STR(s_end_session)
+				CASE_TO_STR(s_get_pubkey)
+				CASE_TO_STR(s_send_message)
+				CASE_TO_STR(s_query_incoming)
+				CASE_TO_STR(s_check_online_status)
+				CASE_TO_STR(s_find_users_by_display_name)
+				CASE_TO_STR(s_find_users_by_login)
+				default:
+					return _STR(s_zero);
+			}
 		}
 		
 		inline static signal signal_from_name(const std::string& name)
 		{
-			if (name == SIGNAL_NAME(s_register_user))
+			if (name == _STR(s_register_user))
 				return s_register_user;
-			else if (name == SIGNAL_NAME(s_set_password))
+			else if (name == _STR(s_set_password))
 				return s_set_password;
-			else if (name == SIGNAL_NAME(s_set_display_name))
+			else if (name == _STR(s_set_display_name))
 				return s_set_display_name;
-			else if (name == SIGNAL_NAME(s_get_display_name))
+			else if (name == _STR(s_get_display_name))
 				return s_get_display_name;
-			else if (name == SIGNAL_NAME(s_begin_session))
+			else if (name == _STR(s_begin_session))
 				return s_begin_session;
-			else if (name == SIGNAL_NAME(s_end_session))
+			else if (name == _STR(s_end_session))
 				return s_end_session;
-			else if (name == SIGNAL_NAME(s_get_pubkey))
+			else if (name == _STR(s_get_pubkey))
 				return s_get_pubkey;
-			else if (name == SIGNAL_NAME(s_send_message))
+			else if (name == _STR(s_send_message))
 				return s_send_message;
-			else if (name == SIGNAL_NAME(s_query_incoming))
+			else if (name == _STR(s_query_incoming))
 				return s_query_incoming;
-			else if (name == SIGNAL_NAME(s_check_online_status))
+			else if (name == _STR(s_check_online_status))
 				return s_check_online_status;
-			else if (name == SIGNAL_NAME(s_find_users_by_display_name))
+			else if (name == _STR(s_find_users_by_display_name))
 				return s_find_users_by_display_name;
-			else if (name == SIGNAL_NAME(s_find_users_by_login))
+			else if (name == _STR(s_find_users_by_login))
 				return s_find_users_by_login;
 			else return s_zero;
 		}
@@ -862,14 +782,13 @@ namespace msg
 	{
 	public:
 		template <bool do_fork = true>
-		inline static server* create_server(int max_clients, const inet::inet_address& address)
+		inline static server* create_server(
+				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
 		{
 			if (!generate_certs<do_fork>())
 				return nullptr;
 			
-			load_users();
-			
-			return new server(max_clients, address);
+			return new server(max_clients, address, db_login, db_password);
 		}
 		
 		inline bool run()
@@ -899,7 +818,7 @@ namespace msg
 					: table_name(std::move(table_name))
 			{
 				sql::Driver* driver = sql::mariadb::get_driver_instance();
-				sql::SQLString url("jdbc:mariadb://localhost:3306/ppm");
+				sql::SQLString url("jdbc:mariadb://localhost:3306/" DATABASE_NAME);
 				sql::Properties properties(
 						{{"root",     login},
 						 {"password", password}}
@@ -927,9 +846,14 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func setup: " << e.what() << std::endl;
+					std::cerr << "Error in func " _STR(mariadb_manager::setup()) ": " << e.what() << std::endl;
 					return false;
 				}
+			}
+			
+			inline bool save_user(const std::pair<std::string, USER_DATA>& userpair)
+			{
+				return save_user(userpair.first, userpair.second);
 			}
 			
 			inline bool save_user(const std::string& login, const USER_DATA& userdata)
@@ -948,7 +872,31 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func save_user: " << e.what() << std::endl;
+					std::cerr << "Error in func " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what() << std::endl;
+					return false;
+				}
+			}
+			
+			inline bool update_user(const std::pair<std::string, USER_DATA>& userpair)
+			{
+				return update_user(userpair.first, userpair.second);
+			}
+			
+			inline bool update_user(const std::string& login, const USER_DATA& userdata)
+			{
+				try
+				{
+					std::unique_ptr<sql::PreparedStatement> statement(
+							connection->prepareStatement(
+									""/// TODO: update query
+							)
+					);
+					statement->executeQuery();
+					return true;
+				}
+				catch (sql::SQLException& e)
+				{
+					std::cerr << "Error in func " _STR(mariadb_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
 					return false;
 				}
 			}
@@ -971,7 +919,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func load_user: " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_manager::load_user(login)) ": " << e.what() << std::endl;
 					return false;
 				}
 			}
@@ -995,7 +943,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func mariadb_manager_close: " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_manager::~mariadb_manager()) ": " << e.what() << std::endl;
 				}
 			}
 		
@@ -1008,10 +956,12 @@ namespace msg
 		static std::map<std::string, USER_STATUS> statuses;
 		static std::map<std::string, USER_DATA> users;
 		static MESSAGES incoming;
+		std::unique_ptr<mariadb_manager> db_user_manager = nullptr;
 		
 		
-		inline server(int max_clients, const inet::inet_address& address)
-				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH)
+		inline server(int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
+				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH),
+				  db_user_manager(std::make_unique<mariadb_manager>(db_login, db_password, USERS_TABLE_NAME))
 		{ }
 		
 		inline static bool process_request(messenger_io io, const inet::inet_address& address, server* serv)
@@ -1032,14 +982,13 @@ namespace msg
 						std::string display_name;
 						if (read_display_name(io, header, response, display_name))
 						{
-							auto login_str = std::string(login);
-							if (users.find(login_str) == users.end())
+							if (users.find(login) == users.end())
 							{
-								::syslog(LOG_DEBUG, "Registering user \"%s\"...", login.c_str());
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
-								users[login_str] = {salt, password, display_name};
-								save_users();
+								auto&& tmp = users[login] = {salt, password, display_name};
+								serv->db_user_manager->save_user(login, tmp);
+								::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 								response.err = HEADER::e_success;
 							}
 							else
@@ -1059,6 +1008,7 @@ namespace msg
 							if (check_credentials(response, login, password, user))
 							{
 								user->second.password = data;
+								serv->db_user_manager->update_user(*user);
 								::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1077,6 +1027,7 @@ namespace msg
 								if (new_display_name.size() > MAX_DISPLAY_NAME)
 									new_display_name.resize(MAX_DISPLAY_NAME);
 								user->second.display_name = new_display_name;
+								serv->db_user_manager->update_user(*user);
 								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), new_display_name.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1115,6 +1066,7 @@ namespace msg
 						if (check_credentials(response, login, password, user))
 						{
 							statuses[user->first].is_session_running = false;
+							serv->db_user_manager->unload_user(user->first);
 							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
@@ -1222,7 +1174,8 @@ namespace msg
 								std::list<std::string> matches;
 								for (const auto& u: users)
 								{
-									if (matches.size() > MAX_USER_ENTRIES_AMOUNT) break;
+									/// FIXME: load users from database and then unload them
+									if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
 									if (u.second.display_name.size() >= key.size() &&
 										__detail__::contains(u.second.display_name.c_str(), key.c_str()))
 										matches.push_back(u.first);
@@ -1250,9 +1203,9 @@ namespace msg
 								io.write(response);
 								
 								std::list<std::string> matches;
-								for (const auto& u: users)
+								for (const auto& u: statuses)
 								{
-									if (matches.size() > MAX_USER_ENTRIES_AMOUNT) break;
+									if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
 									if (u.first.size() >= key.size() &&
 										__detail__::contains(u.first.c_str(), key.c_str()))
 										matches.push_back(u.first);
@@ -1387,50 +1340,6 @@ namespace msg
 			return true;
 		}
 		
-		inline static void load_users()
-		{
-			auto file = ::fopen(users_file, "rb");
-			if (file)
-			{
-				while (!::feof(file))
-				{
-					auto* username = new char[MAX_LOGIN + 1]{ };
-					auto* sha512password = new char[MAX_PASSWORD]{ };
-					::fscanf(file, "%s : %s : \"", username, sha512password);
-					std::string display_name;
-					char c = 0;
-					while (!::feof(file))
-					{
-						::fread(&c, sizeof c, 1, file);
-						if (c == '\"') break;
-						display_name += c;
-					}
-					::fscanf(file, "\n");
-					users[username] = {sha512password, display_name};
-					delete[] username;
-					delete[] sha512password;
-				}
-				::fclose(file);
-			}
-		}
-		
-		inline static void save_users()
-		{
-			struct stat st;
-			int res;
-			if (!(res = ::stat(CONFIG_DIR, &st)) && st.st_mode != S_IFDIR) ::system("rm -f \"" CONFIG_DIR "\"");
-			if (res < 0) ::system("mkdir -p \"" CONFIG_DIR "\"");
-			auto file = ::fopen(users_file, "wb");
-			if (file)
-			{
-				for (auto&& user: users)
-				{
-					::fprintf(file, "%s : %s : %s\n", user.first.c_str(), user.second.password.c_str(), user.second.display_name.c_str());
-				}
-				::fclose(file);
-			}
-		}
-		
 		inline static bool client_processing(inet::inet_io& io, const inet::inet_address& address, inet::server* serv)
 		{
 			auto* this_ptr = static_cast<server*>(serv->extra);
@@ -1507,6 +1416,7 @@ namespace msg
 	};
 	
 	std::map<std::string, server::USER_DATA> server::users;
+	std::map<std::string, server::USER_STATUS> server::statuses;
 	MESSAGES server::incoming;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
@@ -2039,4 +1949,4 @@ err:
 	}
 }
 
-#endif //PRIVACY_PROTECTION_MESSENGER_NETWORK_HPP
+#endif //PRIVACY_PROTECTION_MESSENGER_MESSENGER_HPP

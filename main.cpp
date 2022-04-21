@@ -1,4 +1,4 @@
-#include "network.hpp"
+#include "messenger.hpp"
 #include "color.hpp"
 #include <log-console-defs>
 
@@ -14,11 +14,12 @@
 
 static bool debug = false;
 static char* appname = nullptr;
+static bool is_server = true;
 
 static int max_clients = 10;
 static const char* mariadb_login = "ppmadmin";
 static const char* mariadb_password = COLOR_CYAN "uIaBycFQyYRDOXbXo.JyM0" COLOR_RESET;
-static bool setup_mariadb = false;
+static const char* setup_mariadb_table = nullptr;
 
 static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
 
@@ -43,10 +44,11 @@ const option l_options[]{
 		{"odatapipe",   required_argument, nullptr, 'O'},
 		
 		{"max-clients", required_argument, nullptr, 'c'},
-		{"setup-db",    required_argument, nullptr, 1},
 		{"dblogin",     required_argument, nullptr, 2},
 		{"dbpassword",  required_argument, nullptr, 3},
 		
+		{"setup-db",    required_argument, nullptr, 1},
+		{"constant",       optional_argument, nullptr, 10},
 		{"debug",       no_argument,       nullptr, 'd'},
 		{"version",     no_argument,       nullptr, 'v'},
 		{"help",        no_argument,       nullptr, '?'},
@@ -93,119 +95,20 @@ inline static void rd_pipe(Container& cont)
 	}
 }
 
+inline static void parse_args(int argc, char** argv);
+
 int main(int argc, char** argv)
 {
 	appname = argv[0];
 	if (argc <= 1) help(0);
-	bool is_server = true;
 	
-	int opt, longid;
-	while ((opt = ::getopt_long(argc, argv, s_options, l_options, &longid)) >= 0)
-	{
-		switch (opt)
-		{
-			case 'm':
-			{
-				if (!::strcasecmp(optarg, "client"))
-					is_server = false;
-				break;
-			}
-			
-			case 'a':
-			{
-				::address = inet::inet_address::from_ipv4(optarg, DEFAULT_PORT);
-				break;
-			}
-			
-			case 'l':
-			{
-				::login = ::strdup(optarg);
-				break;
-			}
-			
-			case 'p':
-			{
-				::password = ::strdup(optarg);
-				break;
-			}
-			
-			case 'M':
-			{
-				::metadata = ::strdup(optarg);
-				break;
-			}
-			
-			case 'I':
-			{
-				::idatapipe = ::strtol(optarg, nullptr, 10);
-				break;
-			}
-			
-			case 'O':
-			{
-				::odatapipe = ::strtol(optarg, nullptr, 10);
-				break;
-			}
-			
-			case 'o':
-			{
-				::operation_signal = msg::HEADER::signal_from_name(optarg);
-				break;
-			}
-			
-			case 'c':
-			{
-				::max_clients = ::strtol(optarg, nullptr, 10);
-				break;
-			}
-			
-			case 1:
-			{
-				::setup_mariadb = true;
-				break;
-			}
-			
-			case 2:
-			{
-				::mariadb_login = ::strdup(optarg);
-				break;
-			}
-			
-			case 3:
-			{
-				::mariadb_password = ::strdup(optarg);
-				break;
-			}
-			
-			case 'd':
-			{
-				::debug = true;
-				break;
-			}
-			
-			case 'v':
-			{
-				::printf("Version: " COLOR_MAGENTA VERSION COLOR_RESET ".\nBinary file path: \"%s\".\n", appname);
-				::exit(0);
-			}
-			
-			case '?':
-			{
-				::help(0);
-			}
-			
-			default:
-			{
-				::help(-2);
-			}
-		}
-	}
+	parse_args(argc, argv);
 	
-	if (::setup_mariadb)
+	if (::setup_mariadb_table)
 	{
 		int exit_code;
 		{
-			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, optarg);
+			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, ::setup_mariadb_table);
 			exit_code = manager.setup();
 		}
 		::exit(exit_code);
@@ -370,15 +273,16 @@ void help(int code)
 	::printf("\n For SERVER mode\n");
 	::printf("o  --address|-a      <IP>        server ip address\n");
 	::printf("o  --max-clients|-c  <amount>    maximum clients to process at once\n");
-	::printf("o  --setup-db        <name>      create table for users in mariadb database\n");
+	::printf("o  --setup-db                    create table for users in mariadb database\n");
 	::printf("o  --dblogin         <login>     database user login\n");
 	::printf("o  --dbpassword      <password>  database user password\n");
 	
 	::printf("\n General\n");
-	::printf("o  --debug|-d    enable debug mode\n");
-	::printf("o  --version|-v  print application version\n");
-	::printf("o  --help|-?     print help\n");
-	::printf(COLOR_CYAN "\nDesignation 'm' for mandatory and 'o' for optional\n" COLOR_RESET "\n");
+	::printf("o  --constant    (<CONSTANT>)  print CONSTANT value or list available\n");
+	::printf("o  --debug|-d                  enable debug mode\n");
+	::printf("o  --version|-v                print application version\n");
+	::printf("o  --help|-?                   print help\n");
+	::printf(COLOR_CYAN "\nDesignation 'm' is for mandatory and 'o' - for optional.\n" COLOR_RESET "\n");
 	
 	::exit(code);
 }
@@ -417,7 +321,7 @@ void run_server()
 	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
 	inet::open_port_in_iptables(address.get_port());
 	
-	auto serv = msg::server::create_server(max_clients, address);
+	auto serv = msg::server::create_server(max_clients, address, mariadb_login, mariadb_password);
 	
 	if (serv == nullptr)
 	{
@@ -430,5 +334,117 @@ void run_server()
 	{
 		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
 		::exit(-1);
+	}
+}
+
+void parse_args(int argc, char** argv)
+{
+	int opt, longid;
+	while ((opt = ::getopt_long(argc, argv, s_options, l_options, &longid)) >= 0)
+	{
+		switch (opt)
+		{
+			case 'm':
+			{
+				if (!::strcasecmp(optarg, "client"))
+					is_server = false;
+				break;
+			}
+			
+			case 'a':
+			{
+				::address = inet::inet_address::from_ipv4(optarg, DEFAULT_PORT);
+				break;
+			}
+			
+			case 'l':
+			{
+				::login = ::strdup(optarg);
+				break;
+			}
+			
+			case 'p':
+			{
+				::password = ::strdup(optarg);
+				break;
+			}
+			
+			case 'M':
+			{
+				::metadata = ::strdup(optarg);
+				break;
+			}
+			
+			case 'I':
+			{
+				::idatapipe = ::strtol(optarg, nullptr, 10);
+				break;
+			}
+			
+			case 'O':
+			{
+				::odatapipe = ::strtol(optarg, nullptr, 10);
+				break;
+			}
+			
+			case 'o':
+			{
+				::operation_signal = msg::HEADER::signal_from_name(optarg);
+				break;
+			}
+			
+			case 'c':
+			{
+				::max_clients = ::strtol(optarg, nullptr, 10);
+				break;
+			}
+			
+			case 1:
+			{
+				::setup_mariadb_table = ::strdup(optarg);
+				break;
+			}
+			
+			case 2:
+			{
+				::mariadb_login = ::strdup(optarg);
+				break;
+			}
+			
+			case 3:
+			{
+				::mariadb_password = ::strdup(optarg);
+				break;
+			}
+			
+			case 10:
+			{
+				CONSTANT constant((optarg ? optarg : ""));
+				constant.print_self(std::cout);
+				::exit(0);
+			}
+			
+			case 'd':
+			{
+				::debug = true;
+				break;
+			}
+			
+			case 'v':
+			{
+				::printf("Version: " COLOR_MAGENTA VERSION COLOR_RESET ".\nBinary file path: \"%s\".\n", appname);
+				::exit(0);
+			}
+			
+			case '?':
+			{
+				::help(0);
+			}
+			
+			default:
+			{
+				::help(-2);
+			}
+		}
 	}
 }
