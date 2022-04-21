@@ -205,8 +205,8 @@ int main(int argc, char** argv)
 	{
 		int exit_code;
 		{
-			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password);
-			exit_code = manager.setup(optarg);
+			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, optarg);
+			exit_code = manager.setup();
 		}
 		::exit(exit_code);
 	}
