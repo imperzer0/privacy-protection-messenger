@@ -24,10 +24,13 @@ for _libfile in ${_libfiles[@]}
 
 _package_version=$pkgname" ("$pkgver"-"$pkgrel")"
 _var_directory="/var/lib/$pkgname"
+_cfg_directory="/etc/$pkgname"
 
 build()
 {
-	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DPACKAGE_VERSION="$_package_version" -DVAR_DIRECTORY=$_var_directory .
+	cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++\
+	      -DPACKAGE_VERSION="$_package_version" -DVAR_DIRECTORY="$_var_directory" -DAPPNAME="$pkgname"\
+	      -DCFG_DIR="$_cfg_directory" .
 	make
 }
 
@@ -36,6 +39,7 @@ package()
 	install -Dm755 $pkgname "$pkgdir/usr/bin/$pkgname"
 	install -Dm644 $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
 	mkdir -pm644 $pkgdir$_var_directory
+	mkdir -pm644 $pkgdir$_cfg_directory
 }
 
 notarch_package()
@@ -45,4 +49,5 @@ notarch_package()
 	cp -f $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
 	chmod 644 "$pkgdir/etc/systemd/system/$pkgname.service"
 	mkdir -pm644 $pkgdir$_var_directory
+	mkdir -pm644 $pkgdir$_cfg_directory
 }

@@ -5,6 +5,21 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lssl -lcrypto -lpthread -lsoter -lthemis -lmariadbcpp")
 
-add_compile_definitions(VERSION="${PACKAGE_VERSION}" VAR_DIRECTORY="${VAR_DIRECTORY}")
+if (DEFINED PACKAGE_VERSION)
+    add_compile_definitions(VERSION="${PACKAGE_VERSION}")
+endif ()
+
+if (DEFINED VAR_DIRECTORY)
+    add_compile_definitions(VAR_DIRECTORY="${VAR_DIRECTORY}")
+endif ()
+
+if (DEFINED APPNAME)
+    add_compile_definitions(MESSENGER_NAME="${APPNAME}")
+endif ()
+
+if (DEFINED CFG_DIR)
+    add_compile_definitions(CONFIG_DIR="${CFG_DIR}")
+endif ()
+
 
 add_executable(privacy-protection-messenger main.cpp)

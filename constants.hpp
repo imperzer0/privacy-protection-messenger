@@ -80,6 +80,14 @@
 #  define MAX_USER_ENTRIES_AMOUNT 100ul
 # endif
 
+# ifndef VERSION
+#  define VERSION MESSENGER_NAME " (git)"
+# endif
+
+# ifndef VAR_DIRECTORY
+#  define VAR_DIRECTORY "/var/lib/" MESSENGER_NAME
+# endif
+
 #define CASE_TO_STR(opt) case opt: return _STR(opt);
 
 
@@ -255,12 +263,12 @@ public:
 	
 	inline static void print_all_constants(std::ostream& ostream)
 	{
-		ostream << "CONSTANT\n{\n";
-		for (auto i = invalid + 1; i < maxval; ++i)
+		ostream << "\033[1;34mCONSTANT\033[0;35m\n{\n  \033[1;36m" << CONSTANT(static_cast<decltype(invalid)>(1)).to_string();
+		for (auto i = invalid + 2; i < maxval; ++i)
 		{
-			ostream << "  " << CONSTANT(static_cast<decltype(invalid)>(i)).to_string() << ",\n";
+			ostream << "\033[0;35m,\n  \033[1;36m" << CONSTANT(static_cast<decltype(invalid)>(i)).to_string();
 		}
-		ostream << "};\n";
+		ostream << "\n\033[0;35m};\n";
 	}
 
 private:
