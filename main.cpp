@@ -7,8 +7,6 @@
 
 #include <themispp/secure_message.hpp>
 
-#define TOSTR(val) #val
-#define TO_STR(val) TOSTR(val)
 #define STDOUT_REDIRECTION_FILE VAR_DIRECTORY "/.stdout"
 #define STDERR_REDIRECTION_FILE VAR_DIRECTORY "/.stderr"
 
@@ -48,7 +46,7 @@ const option l_options[]{
 		{"dbpassword",  required_argument, nullptr, 3},
 		
 		{"setup-db",    required_argument, nullptr, 1},
-		{"constant",       optional_argument, nullptr, 10},
+		{"constant",    optional_argument, nullptr, 10},
 		{"debug",       no_argument,       nullptr, 'd'},
 		{"version",     no_argument,       nullptr, 'v'},
 		{"help",        no_argument,       nullptr, '?'},
@@ -262,26 +260,26 @@ void help(int code)
 	::printf("m  --mode|-m         CLIENT/SERVER  client or server mode\n");
 	
 	::printf("\n For CLIENT mode\n");
-	::printf("m  --address|-a      <IP>         server ip address\n");
-	::printf("m  --operation|-o    <operation>  perform operation\n");
-	::printf("m  --login|-l        <login>      login\n");
-	::printf("m  --password|-p     <password>   password\n");
-	::printf("o  --metadata|-M     <data>       undefined purpose data\n");
-	::printf("o  --idatapipe|-I    <pipedes>    message data transfer pipe - input\n");
-	::printf("o  --odatapipe|-O    <pipedes>    message data transfer pipe - output\n");
+	::printf("m  --address|-a      <IP>           server ip address\n");
+	::printf("m  --operation|-o    <operation>    perform operation\n");
+	::printf("m  --login|-l        <login>        login\n");
+	::printf("m  --password|-p     <password>     password\n");
+	::printf("o  --metadata|-M     <data>         undefined purpose data\n");
+	::printf("o  --idatapipe|-I    <pipedes>      message data transfer pipe - input\n");
+	::printf("o  --odatapipe|-O    <pipedes>      message data transfer pipe - output\n");
 	
 	::printf("\n For SERVER mode\n");
-	::printf("o  --address|-a      <IP>        server ip address\n");
-	::printf("o  --max-clients|-c  <amount>    maximum clients to process at once\n");
-	::printf("o  --setup-db                    create table for users in mariadb database\n");
-	::printf("o  --dblogin         <login>     database user login\n");
-	::printf("o  --dbpassword      <password>  database user password\n");
+	::printf("o  --address|-a      <IP>           server ip address\n");
+	::printf("o  --max-clients|-c  <amount>       maximum clients to process at once\n");
+	::printf("o  --setup-db                       create table for users in mariadb database\n");
+	::printf("o  --dblogin         <login>        database user login\n");
+	::printf("o  --dbpassword      <password>     database user password\n");
 	
 	::printf("\n General\n");
-	::printf("o  --constant    (<CONSTANT>)  print CONSTANT value or list available\n");
-	::printf("o  --debug|-d                  enable debug mode\n");
-	::printf("o  --version|-v                print application version\n");
-	::printf("o  --help|-?                   print help\n");
+	::printf("o  --constant        (<CONSTANT>)   print CONSTANT value or list available\n");
+	::printf("o  --debug|-d                       enable debug mode\n");
+	::printf("o  --version|-v                     print application version\n");
+	::printf("o  --help|-?                        print help\n");
 	::printf(COLOR_CYAN "\nDesignation 'm' is for mandatory and 'o' - for optional.\n" COLOR_RESET "\n");
 	
 	::exit(code);
