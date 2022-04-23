@@ -882,15 +882,16 @@ namespace msg
 				return update_user(userpair.first, userpair.second);
 			}
 			
-			inline bool update_user(const std::string& login, const USER_DATA& userdata)
+            inline bool update_user(const std::string& table_name, const std::string& login, const USER_DATA& userdata)
 			{
 				try
 				{
 					std::unique_ptr<sql::PreparedStatement> statement(
-							connection->prepareStatement(
-									""/// TODO: update query
-							)
+                            connection->prepareStatement(
+                                    "delete from "  + table_name + " where login='" + login + "';";
+                            )
 					);
+                    save_user(login, userdata);
 					statement->executeQuery();
 					return true;
 				}
