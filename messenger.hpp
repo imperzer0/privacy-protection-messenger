@@ -856,26 +856,25 @@ namespace msg
 				return save_user(userpair.first, userpair.second);
 			}
 			
-			inline bool save_user(const std::string& login, const USER_DATA& userdata)
-			{
-				try
-				{
-					std::unique_ptr<sql::PreparedStatement> statement(
-							connection->prepareStatement(
-									"insert into " + table_name +
-									" (login, display_name, salt, password) values('" + login + "','" + userdata.display_name + "','"
-									+ userdata.salt + "','" + userdata.password + "');"
-							)
-					);
-					statement->executeQuery();
-					return true;
-				}
-				catch (sql::SQLException& e)
-				{
-					std::cerr << "Error in func " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what() << std::endl;
-					return false;
-				}
-			}
+			inline bool save_user(const std::string& login, const USER_DATA& userdata) {
+                try {
+                    std::unique_ptr<sql::PreparedStatement> statement(
+                            connection->prepareStatement(
+                                    "insert into " + table_name +
+                                    " (login, display_name, salt, password) values('" + login + "','" +
+                                    userdata.display_name + "','"
+                                    + userdata.salt + "','" + userdata.password + "');"
+                            )
+                    );
+                    statement->executeQuery();
+                    return true;
+                }
+                catch (sql::SQLException &e) {
+                    std::cerr << "Error in func " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what()
+                              << std::endl;
+                    return false;
+                }
+            }
 			
 			inline bool update_user(const std::pair<std::string, USER_DATA>& userpair)
 			{
@@ -888,11 +887,11 @@ namespace msg
 				{
 					std::unique_ptr<sql::PreparedStatement> statement(
                             connection->prepareStatement(
-                                    "delete from "  + table_name + " where login='" + login + "';";
+                                    "update "  + table_name + "set display_name='" + userdata.display_name + "',password='"
+                                    + userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';";
                             )
 					);
-                    save_user(login, userdata);
-					statement->executeQuery();
+                    statement->executeQuery();
 					return true;
 				}
 				catch (sql::SQLException& e)
@@ -912,9 +911,9 @@ namespace msg
 					);
 					res->next();
 					
-					std::string display_name = res->getString(2).c_str();
-					std::string salt = res->getString(3).c_str();
-					std::string password = res->getString(4).c_str();
+                    std::string display_name = res->getString(3).c_str();
+                    std::string salt = res->getString(1).c_str();
+                    std::string password = res->getString(2).c_str();
 					users.insert({login, USER_DATA{salt, password, display_name}});
 					return true;
 				}
