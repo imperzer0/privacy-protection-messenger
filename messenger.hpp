@@ -859,7 +859,7 @@ namespace msg
 				{
 					std::unique_ptr<sql::PreparedStatement> statement(
                             connection->prepareStatement(
-                                    "update "  + table_name + "set display_name='" + userdata.display_name + "', password='"
+                                    "update "  + table_name + " set display_name='" + userdata.display_name + "', password='"
                                     + userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';"
                             )
 					);
