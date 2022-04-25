@@ -853,14 +853,14 @@ namespace msg
 				return update_user(userpair.first, userpair.second);
 			}
 			
-            inline bool update_user(const std::string& table_name, const std::string& login, const USER_DATA& userdata)
+            inline bool update_user(const std::string& login, const USER_DATA& userdata)
 			{
 				try
 				{
 					std::unique_ptr<sql::PreparedStatement> statement(
                             connection->prepareStatement(
-                                    "update "  + table_name + "set display_name='" + userdata.display_name + "',password='"
-                                    + userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';";
+                                    "update "  + table_name + "set display_name='" + userdata.display_name + "', password='"
+                                    + userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';"
                             )
 					);
                     statement->executeQuery();
