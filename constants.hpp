@@ -20,18 +20,6 @@
 #  define MESSENGER_NAME "privacy-protection-messenger"
 # endif
 
-# ifndef CERTIFICATE_DIR
-#  define CERTIFICATE_DIR "cert/"
-# endif
-
-# ifndef CERTIFICATE_PATH
-#  define CERTIFICATE_PATH CERTIFICATE_DIR"certificate.pem"
-# endif
-
-# ifndef PRIVATE_KEY_PATH
-#  define PRIVATE_KEY_PATH CERTIFICATE_DIR"key.pem"
-# endif
-
 # ifndef COUNTRY
 #  define COUNTRY "UA"
 # endif
@@ -100,9 +88,6 @@ public:
 		DB_NAME,
 		USERS_TBL_NAME,
 		APPLICATION_NAME,
-		SSLCRT_DIR,
-		SSLCRT_PATH,
-		SSLPRIKEY_PATH,
 		SSLCRT_COUNTRY,
 		SSLCRT_ORGANIZATION,
 		SSLCRT_CRT_NAME,
@@ -125,12 +110,6 @@ public:
 			constval = (USERS_TBL_NAME);
 		else if (name == _STR(APPLICATION_NAME))
 			constval = (APPLICATION_NAME);
-		else if (name == _STR(SSLCRT_DIR))
-			constval = (SSLCRT_DIR);
-		else if (name == _STR(SSLCRT_PATH))
-			constval = (SSLCRT_PATH);
-		else if (name == _STR(SSLPRIKEY_PATH))
-			constval = (SSLPRIKEY_PATH);
 		else if (name == _STR(SSLCRT_COUNTRY))
 			constval = (SSLCRT_COUNTRY);
 		else if (name == _STR(SSLCRT_ORGANIZATION))
@@ -166,9 +145,6 @@ public:
 			CASE_TO_STR(DB_NAME)
 			CASE_TO_STR(USERS_TBL_NAME)
 			CASE_TO_STR(APPLICATION_NAME)
-			CASE_TO_STR(SSLCRT_DIR)
-			CASE_TO_STR(SSLCRT_PATH)
-			CASE_TO_STR(SSLPRIKEY_PATH)
 			CASE_TO_STR(SSLCRT_COUNTRY)
 			CASE_TO_STR(SSLCRT_ORGANIZATION)
 			CASE_TO_STR(SSLCRT_CRT_NAME)
@@ -213,15 +189,6 @@ public:
 				break;
 			case CONSTANT::APPLICATION_NAME:
 				std::cout << MESSENGER_NAME << "\n";
-				break;
-			case CONSTANT::SSLCRT_DIR:
-				std::cout << CERTIFICATE_DIR << "\n";
-				break;
-			case CONSTANT::SSLCRT_PATH:
-				std::cout << CERTIFICATE_PATH << "\n";
-				break;
-			case CONSTANT::SSLPRIKEY_PATH:
-				std::cout << PRIVATE_KEY_PATH << "\n";
 				break;
 			case CONSTANT::SSLCRT_COUNTRY:
 				std::cout << COUNTRY << "\n";

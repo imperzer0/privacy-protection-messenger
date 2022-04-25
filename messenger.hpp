@@ -33,11 +33,68 @@
 # define E_MESSAGE_NOT_FOUND "Message not found."
 # define E_NO_PERMISSION "No permission."
 
+#define HANDLE_ERRORS_ON_CLIENT case HEADER::e_incorrect_login: \
+                        {                                       \
+                            status = E_INCORRECT_LOGIN;         \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_incorrect_password:      \
+                        {                                       \
+                            status = E_INCORRECT_PASSWORD;      \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_too_long_login:          \
+                        {                                       \
+                            status = E_TOO_LONG_LOGIN;          \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_too_long_password:       \
+                        {                                       \
+                            status = E_TOO_LONG_PASSWORD;       \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_too_short_password:      \
+                        {                                       \
+                            status = E_TOO_SHORT_PASSWORD;      \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_too_long_display_name:   \
+                        {                                       \
+                            status = E_TOO_LONG_DISPLAY_NAME;   \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_no_permission:           \
+                        {                                       \
+                            status = E_NO_PERMISSION;           \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_user_already_exists:     \
+                        {                                       \
+                            status = E_USER_ALREADY_EXISTS;     \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_user_not_found:          \
+                        {                                       \
+                            status = E_USER_NOT_FOUND;          \
+                            return false;                       \
+                        }                                       \
+                        case HEADER::e_message_not_found:       \
+                        {                                       \
+                            status = E_MESSAGE_NOT_FOUND;       \
+                            return false;                       \
+                        }                                       \
+                        default:                                \
+                        {                                       \
+                            LOG << E_DERANGED "\n" << ENDENTLN; \
+                            status = E_DERANGED;                \
+                            return false;                       \
+                        }
+
 
 # undef LOG
 # undef ERR
-# define LOG (inet::__detail__::_log_ << LOG_PREFIX)
-# define ERR (inet::__detail__::_err_ << ERR_PREFIX)
+# define LOG (inet::__detail__::_log_ << PRINT_PREFIX)
+# define ERR (inet::__detail__::_err_ << PRINT_PREFIX)
 
 namespace msg
 {
@@ -298,134 +355,46 @@ namespace msg
 			return inet_io::write(data, size);
 		}
 	};
-
-#define HANDLE_ERRORS    case HEADER::e_incorrect_login: \
-                        {                                \
-                            status = E_INCORRECT_LOGIN;  \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_incorrect_password: \
-                        {                                \
-                            status = E_INCORRECT_PASSWORD; \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_too_long_login:   \
-                        {                                \
-                            status = E_TOO_LONG_LOGIN;   \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_too_long_password:\
-                        {                                \
-                            status = E_TOO_LONG_PASSWORD;\
-                            return false;                \
-                        }                                \
-                        case HEADER::e_too_short_password: \
-                        {                                \
-                            status = E_TOO_SHORT_PASSWORD; \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_too_long_display_name: \
-                        {                                \
-                            status = E_TOO_LONG_DISPLAY_NAME; \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_no_permission:    \
-                        {                                \
-                            status = E_NO_PERMISSION;    \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_user_already_exists:\
-                        {                                \
-                            status = E_USER_ALREADY_EXISTS;\
-                            return false;                \
-                        }                                \
-                        case HEADER::e_user_not_found:   \
-                        {                                \
-                            status = E_USER_NOT_FOUND;   \
-                            return false;                \
-                        }                                \
-                        case HEADER::e_message_not_found:\
-                        {                                \
-                            status = E_MESSAGE_NOT_FOUND;\
-                            return false;                \
-                        }                                \
-                        default:                         \
-                        {                                \
-                            LOG << E_DERANGED "\n" << ENDENTLN;  \
-                            status = E_DERANGED;            \
-                            return false;                   \
-                        }
 	
-	template <bool do_fork = true>
-	inline static bool generate_certs()
+	inline static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> generate_cert()
 	{
-		bool generate_certs = true;
-		pid_t pid;
-		if constexpr(do_fork)
+		std::string error;
+		
+		auto pkey = inet::generate_pkey(error);
+		if (!pkey)
 		{
-			pid = ::fork();
-			if (pid < 0)
-			{
-				generate_certs = false;
-				ERROR("Fork failed.");
-			}
-			else if (pid > 0)
-				generate_certs = false;
-			else
-				generate_certs = true;
+			LOG << LOG_COLOR << "An error occurred while generating pkey: " << error << ENDENTLN;
+			EVP_PKEY_free(pkey);
+			return {{ },
+					{ }};
 		}
 		
-		if (generate_certs)
+		auto cert = inet::generate_cert(error, pkey, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
+		if (!cert)
 		{
-			std::string error;
-			
-			auto key = inet::generate_key(error);
-			if (!key)
-			{
-				LOG << LOG_COLOR << "An error occurred while generating key: " << error << ENDENTLN;
-				return false;
-			}
-			
-			auto x509 = inet::generate_x509(error, key, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
-			if (!x509)
-			{
-				LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
-				return false;
-			}
-			
-			::system("mkdir -p \"" CERTIFICATE_DIR "\"");
-			
-			if (!inet::write_certificate_to_disk(error, key, x509, PRIVATE_KEY_PATH, CERTIFICATE_PATH))
-			{
-				LOG << LOG_COLOR << "An error occurred while writing certificate and key: " << error << ENDENTLN;
-				return false;
-			}
-			
-			if constexpr(do_fork) ::exit(EXIT_SUCCESS);
-		}
-		else if constexpr(do_fork)
-		{
-			int loc;
-			::waitpid(pid, &loc, 0);
-			if (WEXITSTATUS(loc))
-			{
-				return false;
-			}
+			LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
+			EVP_PKEY_free(pkey);
+			X509_free(cert);
+			return {{ },
+					{ }};
 		}
 		
-		return true;
+		return {inet::convert(cert), inet::convert(pkey)};
 	}
 	
 	class client : public inet::client, private messenger_io
 	{
 	public:
-		template <bool do_fork = true>
 		inline static client* create_client(const inet::inet_address& server_address)
 		{
-			if (!generate_certs<do_fork>())
+			auto certpair = generate_cert();
+			if (certpair.first.empty() || certpair.second.empty())
 				return nullptr;
 			
-			return new client(server_address, CERTIFICATE_PATH, PRIVATE_KEY_PATH);
+			return new client(
+					server_address,
+					std::make_shared<inet::loader>(inet::input_steam(certpair.first), inet::input_steam(certpair.second))
+			);
 		}
 		
 		inline bool register_user(const std::string& login, const std::string& password, const std::string& display_name, std::string& status)
@@ -444,7 +413,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			
@@ -467,7 +436,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			
@@ -490,7 +459,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -512,7 +481,7 @@ namespace msg
 						messenger_io::read(display_name);
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			
@@ -535,7 +504,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			
@@ -557,7 +526,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -581,7 +550,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -609,7 +578,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -631,7 +600,7 @@ namespace msg
 						status = E_SUCCESS;
 						return messenger_io::read(message);
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -655,7 +624,7 @@ namespace msg
 						status = E_SUCCESS;
 						return true;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -691,7 +660,7 @@ namespace msg
 						}
 						return false;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
@@ -727,15 +696,15 @@ namespace msg
 						}
 						return false;
 					}
-					HANDLE_ERRORS
+					HANDLE_ERRORS_ON_CLIENT
 				}
 			}
 			return false;
 		}
 	
 	private:
-		inline explicit client(const inet::inet_address& server_address, const std::string& cert_file = "", const std::string& key_file = "")
-				: messenger_io(inet::inet_io()), inet::client(server_address, true, cert_file, key_file)
+		inline explicit client(const inet::inet_address& server_address, std::shared_ptr<inet::loader> crt)
+				: messenger_io(inet::inet_io()), inet::client(server_address, crt)
 		{
 			this->messenger_io::ssl = this->inet::client::ssl;
 			this->messenger_io::socket = this->inet::client::socket;
@@ -781,14 +750,17 @@ namespace msg
 	class server : private inet::server
 	{
 	public:
-		template <bool do_fork = true>
 		inline static server* create_server(
 				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
 		{
-			if (!generate_certs<do_fork>())
+			auto certpair = generate_cert();
+			if (certpair.first.empty() || certpair.second.empty())
 				return nullptr;
 			
-			return new server(max_clients, address, db_login, db_password);
+			return new server(
+					max_clients, address, db_login, db_password,
+					std::make_shared<inet::loader>(inet::input_steam(certpair.first), inet::input_steam(certpair.second))
+			);
 		}
 		
 		inline bool run()
@@ -959,8 +931,10 @@ namespace msg
 		std::unique_ptr<mariadb_manager> db_user_manager = nullptr;
 		
 		
-		inline server(int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
-				: inet::server(max_clients, address, client_processing, this, CERTIFICATE_PATH, PRIVATE_KEY_PATH),
+		inline server(
+				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password,
+				std::shared_ptr<inet::loader> crt)
+				: inet::server(max_clients, address, client_processing, this, crt),
 				  db_user_manager(std::make_unique<mariadb_manager>(db_login, db_password, USERS_TABLE_NAME))
 		{ }
 		
