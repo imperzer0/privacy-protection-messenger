@@ -789,13 +789,20 @@ namespace msg
 			inline mariadb_manager(const std::string& login, const std::string& password, std::string table_name)
 					: table_name(std::move(table_name))
 			{
-				sql::Driver* driver = sql::mariadb::get_driver_instance();
-				sql::SQLString url("jdbc:mariadb://localhost:3306/" DATABASE_NAME);
-				sql::Properties properties(
-						{{"root",     login},
-						 {"password", password}}
-				);
-				connection = std::unique_ptr<sql::Connection>(driver->connect(url, properties));
+				try
+				{
+					sql::Driver* driver = sql::mariadb::get_driver_instance();
+					sql::SQLString url("jdbc:mariadb://localhost:3306/" DATABASE_NAME);
+					sql::Properties properties(
+							{{"user",     login},
+							 {"password", password}}
+					);
+					connection = std::unique_ptr<sql::Connection>(driver->connect(url, properties));
+				}
+				catch (sql::SQLException& e)
+				{
+					std::cerr << "Error in " _STR(mariadb_manager::mariadb_manager(login, password, table_name)) ": " << e.what() << std::endl;
+				}
 			}
 			
 			inline bool setup()
@@ -805,12 +812,12 @@ namespace msg
 					std::unique_ptr<sql::PreparedStatement> statement(
 							connection->prepareStatement(
 									"create table " + table_name +
-									" ("
+									" ( "
 									"login varchar(" MACRO_STR(MAX_LOGIN) ") NOT NULL PRIMARY KEY,"
 									"display_name varchar(" MACRO_STR(MAX_DISPLAY_NAME) ") NOT NULL,"
 									"salt varchar(16) NOT NULL,"
 									"password varchar(106) NOT NULL"
-									");"
+									" );"
 							)
 					);
 					statement->executeQuery();
@@ -818,7 +825,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func " _STR(mariadb_manager::setup()) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_manager::setup()) ": " << e.what() << std::endl;
 					return false;
 				}
 			}
@@ -828,47 +835,50 @@ namespace msg
 				return save_user(userpair.first, userpair.second);
 			}
 			
-			inline bool save_user(const std::string& login, const USER_DATA& userdata) {
-                try {
-                    std::unique_ptr<sql::PreparedStatement> statement(
-                            connection->prepareStatement(
-                                    "insert into " + table_name +
-                                    " (login, display_name, salt, password) values('" + login + "','" +
-                                    userdata.display_name + "','"
-                                    + userdata.salt + "','" + userdata.password + "');"
-                            )
-                    );
-                    statement->executeQuery();
-                    return true;
-                }
-                catch (sql::SQLException &e) {
-                    std::cerr << "Error in func " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what()
-                              << std::endl;
-                    return false;
-                }
-            }
+			inline bool save_user(const std::string& login, const USER_DATA& userdata)
+			{
+				try
+				{
+					std::unique_ptr<sql::PreparedStatement> statement(
+							connection->prepareStatement(
+									"insert into " + table_name +
+									" ( login, display_name, salt, password ) values( '" + login + "','" +
+									userdata.display_name + "','"
+									+ userdata.salt + "','" + userdata.password + "' );"
+							)
+					);
+					statement->executeQuery();
+					return true;
+				}
+				catch (sql::SQLException& e)
+				{
+					std::cerr << "Error in " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what()
+							  << std::endl;
+					return false;
+				}
+			}
 			
 			inline bool update_user(const std::pair<std::string, USER_DATA>& userpair)
 			{
 				return update_user(userpair.first, userpair.second);
 			}
 			
-            inline bool update_user(const std::string& login, const USER_DATA& userdata)
+			inline bool update_user(const std::string& login, const USER_DATA& userdata)
 			{
 				try
 				{
 					std::unique_ptr<sql::PreparedStatement> statement(
-                            connection->prepareStatement(
-                                    "update "  + table_name + " set display_name='" + userdata.display_name + "', password='"
-                                    + userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';"
-                            )
+							connection->prepareStatement(
+									"update " + table_name + " set display_name='" + userdata.display_name + "', password='"
+									+ userdata.password + "', salt='" + userdata.salt + "' where login='" + login + "';"
+							)
 					);
-                    statement->executeQuery();
+					statement->executeQuery();
 					return true;
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in func " _STR(mariadb_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
 					return false;
 				}
 			}
@@ -883,9 +893,9 @@ namespace msg
 					);
 					res->next();
 					
-                    std::string display_name = res->getString(3).c_str();
-                    std::string salt = res->getString(1).c_str();
-                    std::string password = res->getString(2).c_str();
+					std::string display_name = res->getString(3).c_str();
+					std::string salt = res->getString(1).c_str();
+					std::string password = res->getString(2).c_str();
 					users.insert({login, USER_DATA{salt, password, display_name}});
 					return true;
 				}
