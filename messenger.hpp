@@ -1013,19 +1013,18 @@ namespace msg
 					}
 					case HEADER::s_set_display_name:
 					{
-						std::string data;
-						if (read_data(io, header, data))
+						std::string display_name;
+						if (read_display_name(io, header, response, display_name))
 						{
 							decltype(users.end()) user;
 							if (check_credentials(response, login, password, user))
 							{
-								auto new_display_name = std::string(data);
-								if (new_display_name.size() > MAX_DISPLAY_NAME)
-									new_display_name.resize(MAX_DISPLAY_NAME);
-								user->second.display_name = new_display_name;
+								if (display_name.size() > MAX_DISPLAY_NAME)
+									display_name.resize(MAX_DISPLAY_NAME);
+								user->second.display_name = display_name;
 								if (int ret = serv->db_user_manager->update_user(*user); ret)
 									::exit(ret);
-								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), new_display_name.c_str());
+								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
 								response.err = HEADER::e_success;
 							}
 						}
