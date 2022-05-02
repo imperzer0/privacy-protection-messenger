@@ -16,7 +16,7 @@ static bool is_server = true;
 
 static int max_clients = 10;
 static const char* mariadb_login = "ppmadmin";
-static const char* mariadb_password = COLOR_CYAN "uIaBycFQyYRDOXbXo.JyM0" COLOR_RESET;
+static const char* mariadb_password = "default=uIaBycFQyYRDOXbXo.JyM0";
 static const char* setup_mariadb_table = nullptr;
 
 static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
@@ -109,7 +109,7 @@ int main(int argc, char** argv)
 		int exit_code;
 		{
 			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, ::setup_mariadb_table);
-			exit_code = manager.setup();
+			exit_code = manager.setup() ? 0 : -4;
 		}
 		::exit(exit_code);
 	}
