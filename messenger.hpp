@@ -91,6 +91,8 @@
                         }
 
 
+# define SUCCESS 0
+
 # undef LOG
 # undef ERR
 # define LOG (inet::__detail__::_log_ << PRINT_PREFIX)
@@ -808,10 +810,11 @@ namespace msg
 				catch (sql::SQLException& e)
 				{
 					std::cerr << "Error in " _STR(mariadb_manager::mariadb_manager(login, password, table_name)) ": " << e.what() << std::endl;
+					::exit(e.getErrorCode());
 				}
 			}
 			
-			inline bool setup()
+			inline int32_t setup()
 			{
 				try
 				{
@@ -827,21 +830,21 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					return true;
+					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
 					std::cerr << "Error in " _STR(mariadb_manager::setup()) ": " << e.what() << std::endl;
-					return false;
+					return e.getErrorCode();
 				}
 			}
 			
-			inline bool save_user(const std::pair<std::string, USER_DATA>& userpair)
+			inline int32_t save_user(const std::pair<std::string, USER_DATA>& userpair)
 			{
 				return save_user(userpair.first, userpair.second);
 			}
 			
-			inline bool save_user(const std::string& login, const USER_DATA& userdata)
+			inline int32_t save_user(const std::string& login, const USER_DATA& userdata)
 			{
 				try
 				{
@@ -854,22 +857,22 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					return true;
+					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
 					std::cerr << "Error in " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what()
 							  << std::endl;
-					return false;
+					return e.getErrorCode();
 				}
 			}
 			
-			inline bool update_user(const std::pair<std::string, USER_DATA>& userpair)
+			inline int32_t update_user(const std::pair<std::string, USER_DATA>& userpair)
 			{
 				return update_user(userpair.first, userpair.second);
 			}
 			
-			inline bool update_user(const std::string& login, const USER_DATA& userdata)
+			inline int32_t update_user(const std::string& login, const USER_DATA& userdata)
 			{
 				try
 				{
@@ -880,16 +883,16 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					return true;
+					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
 					std::cerr << "Error in " _STR(mariadb_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
-					return false;
+					return e.getErrorCode();
 				}
 			}
 			
-			inline bool load_user(const std::string& login)
+			inline int32_t load_user(const std::string& login)
 			{
 				try
 				{
@@ -899,16 +902,17 @@ namespace msg
 					);
 					res->next();
 					
-					std::string display_name = res->getString(3).c_str();
 					std::string salt = res->getString(1).c_str();
 					std::string password = res->getString(2).c_str();
-					users.insert({login, USER_DATA{salt, password, display_name}});
-					return true;
+					std::string display_name = res->getString(3).c_str();
+					if (!salt.empty() || !password.empty() || !display_name.empty())
+						users.insert({login, USER_DATA{salt, password, display_name}});
+					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
 					std::cerr << "Error in " _STR(mariadb_manager::load_user(login)) ": " << e.what() << std::endl;
-					return false;
+					return e.getErrorCode();
 				}
 			}
 			
@@ -977,7 +981,8 @@ namespace msg
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
 								auto&& tmp = users[login] = {salt, password, display_name};
-								serv->db_user_manager->save_user(login, tmp);
+								if (int ret = serv->db_user_manager->save_user(login, tmp); ret)
+									::exit(ret);
 								::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -998,7 +1003,8 @@ namespace msg
 							if (check_credentials(response, login, password, user))
 							{
 								user->second.password = data;
-								serv->db_user_manager->update_user(*user);
+								if (int ret = serv->db_user_manager->update_user(*user); ret)
+									::exit(ret);
 								::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1017,7 +1023,8 @@ namespace msg
 								if (new_display_name.size() > MAX_DISPLAY_NAME)
 									new_display_name.resize(MAX_DISPLAY_NAME);
 								user->second.display_name = new_display_name;
-								serv->db_user_manager->update_user(*user);
+								if (int ret = serv->db_user_manager->update_user(*user); ret)
+									::exit(ret);
 								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), new_display_name.c_str());
 								response.err = HEADER::e_success;
 							}

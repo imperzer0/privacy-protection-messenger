@@ -57,6 +57,8 @@ inline static void help(int code);
 
 inline static void daemonize_application();
 
+void opensyslog();
+
 inline static void sighandle_close_port(int sig);
 
 inline static void run_server();
@@ -109,7 +111,7 @@ int main(int argc, char** argv)
 		int exit_code;
 		{
 			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, ::setup_mariadb_table);
-			exit_code = manager.setup() ? 0 : -4;
+			exit_code = manager.setup();
 		}
 		::exit(exit_code);
 	}
@@ -119,6 +121,7 @@ int main(int argc, char** argv)
 	if (is_server)
 	{
 		if (!::debug) daemonize_application();
+		opensyslog();
 		run_server();
 	}
 	else run_client();
@@ -171,28 +174,25 @@ void daemonize_application()
 		::close(fd);
 	
 	/* Redirect stdout and stderr */
-	stdout = ::fopen(STDOUT_REDIRECTION_FILE, "wb");
-	stderr = ::fopen(STDERR_REDIRECTION_FILE, "wb");
-	
-	/* Open syslog */
+	stdout = ::fopen(STDOUT_REDIRECTION_FILE, "ab");
+	stderr = ::fopen(STDERR_REDIRECTION_FILE, "ab");
+}
+
+void opensyslog()
+{
 	::openlog(appname, LOG_PID | LOG_CONS | LOG_PERROR, LOG_DAEMON);
 }
 
-void sighandle_close_port(int sig)
+void sighandle_syslog(int sig)
 {
-	::syslog(LOG_DEBUG, "Closing port %hu in iptables...", address.get_port());
-	inet::close_port_in_iptables(address.get_port());
 	::syslog(LOG_ERR, "SIG%s happened!\n  What: %s", ::sigabbrev_np(sig), ::sigdescr_np(sig));
 	::exit(sig);
 }
 
 void run_server()
 {
-	::signal(SIGPIPE, sighandle_close_port);
-	::signal(SIGTERM, sighandle_close_port);
-	
-	::syslog(LOG_DEBUG, "Opening port %hu in iptables...", address.get_port());
-	inet::open_port_in_iptables(address.get_port());
+	::signal(SIGPIPE, sighandle_syslog);
+	::signal(SIGTERM, sighandle_syslog);
 	
 	auto serv = msg::server::create_server(max_clients, address, mariadb_login, mariadb_password);
 	
