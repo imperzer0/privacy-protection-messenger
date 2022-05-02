@@ -976,7 +976,7 @@ namespace msg
 						std::string display_name;
 						if (read_display_name(io, header, response, display_name))
 						{
-							if (users.find(login) == users.end())
+							if (int ret = serv->db_user_manager->load_user(login); ret && users.find(login) == users.end())
 							{
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
