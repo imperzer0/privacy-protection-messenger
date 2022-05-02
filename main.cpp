@@ -61,6 +61,8 @@ inline static void sighandle_close_port(int sig);
 
 inline static void run_server();
 
+inline static void run_client();
+
 template <typename T>
 inline static void wr_pipe(const T& val)
 {
@@ -119,134 +121,7 @@ int main(int argc, char** argv)
 		if (!::debug) daemonize_application();
 		run_server();
 	}
-	else
-	{
-		auto cli = *msg::client::create_client(::address);
-		std::string status;
-		switch (::operation_signal)
-		{
-			case msg::HEADER::s_register_user:
-			{
-				auto res = cli.register_user(::login, ::password, ::metadata, status);
-				wr_pipe(res);
-			}
-				break;
-			case msg::HEADER::s_set_password:
-			{
-				auto res = cli.set_password(::login, ::password, ::metadata, status);
-				wr_pipe(res);
-			}
-				break;
-			case msg::HEADER::s_set_display_name:
-			{
-				auto res = cli.set_display_name(::login, ::password, ::metadata, status);
-				wr_pipe(res);
-			}
-				break;
-			case msg::HEADER::s_get_display_name:
-			{
-				std::string result;
-				auto res = cli.get_display_name(::login, ::password, result, status);
-				wr_pipe(res);
-				wr_pipe(result);
-			}
-				break;
-			case msg::HEADER::s_begin_session:
-			{
-				themispp::secure_key_pair_generator_t<themispp::EC> keypair;
-				auto res = cli.begin_session(::login, ::password, keypair.get_pub(), status);
-				wr_pipe(res);
-				if (res) wr_pipe(keypair.get_priv());
-			}
-				break;
-			case msg::HEADER::s_end_session:
-			{
-				auto res = cli.end_session(::login, ::password, status);
-				wr_pipe(res);
-			}
-				break;
-			case msg::HEADER::s_send_message:
-			{
-				msg::MESSAGE msg;
-				msg.destination = new std::string(::metadata);
-				msg.destination_size = msg.destination->size();
-				
-				msg.data = new std::vector<uint8_t>();
-				rd_pipe(*msg.data);
-				
-				std::vector<uint8_t> prikey;
-				rd_pipe(prikey);
-				
-				std::vector<uint8_t> pubkey;
-				auto res = cli.get_pubkey(::login, ::password, ::metadata, pubkey, status);
-				
-				std::cerr << "PubKey=\"";
-				for (auto&& c: pubkey)
-					std::cerr << c;
-				std::cerr << "\"\n";
-				
-				auto message = themispp::secure_message_t(prikey, pubkey);
-				*msg.data = message.encrypt(*msg.data);
-				msg.data_size = msg.data->size();
-				
-				res = cli.send_message(::login, ::password, msg, status) && res;
-				wr_pipe(res);
-			}
-				break;
-			case msg::HEADER::s_query_incoming:
-			{
-				msg::MESSAGE msg;
-				std::vector<uint8_t> prikey;
-				rd_pipe(prikey);
-				
-				auto res = cli.query_incoming(::login, ::password, msg, status);
-				
-				std::vector<uint8_t> pubkey;
-				res = cli.get_pubkey(::login, ::password, *msg.source, pubkey, status) && res;
-				
-				wr_pipe(res);
-				
-				auto message = themispp::secure_message_t(prikey, pubkey);
-				*msg.data = message.decrypt(*msg.data);
-				
-				wr_pipe(*msg.source);
-				wr_pipe(*msg.data);
-			}
-				break;
-			case msg::HEADER::s_check_online_status:
-			{
-				bool online = false;
-				auto res = cli.check_online_status(::login, ::password, ::metadata, online, status);
-				wr_pipe(res);
-				wr_pipe(online);
-			}
-				break;
-			case msg::HEADER::s_find_users_by_display_name:
-			{
-				std::list<std::string> list;
-				auto res = cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
-				wr_pipe(res);
-				wr_pipe(list.size());
-				for (auto&& i: list)
-					wr_pipe(i);
-			}
-				break;
-			case msg::HEADER::s_find_users_by_login:
-			{
-				std::list<std::string> list;
-				auto res = cli.find_users_by_login(::login, ::password, ::metadata, list, status);
-				wr_pipe(res);
-				wr_pipe(list.size());
-				for (auto&& i: list)
-					wr_pipe(i);
-			}
-				break;
-			default:
-				std::clog << "Invalid operation!\n";
-				::exit(-4);
-		}
-		std::clog << status << "\n";
-	}
+	else run_client();
 	
 	return 0;
 }
@@ -333,6 +208,135 @@ void run_server()
 		::syslog(LOG_ERR, "An error occurred in server loop on %s:%hu.", address.get_address(), address.get_port());
 		::exit(-1);
 	}
+}
+
+void run_client()
+{
+	auto cli = *msg::client::create_client(::address);
+	std::string status;
+	switch (::operation_signal)
+	{
+		case msg::HEADER::s_register_user:
+		{
+			auto res = cli.register_user(::login, ::password, ::metadata, status);
+			wr_pipe(res);
+		}
+			break;
+		case msg::HEADER::s_set_password:
+		{
+			auto res = cli.set_password(::login, ::password, ::metadata, status);
+			wr_pipe(res);
+		}
+			break;
+		case msg::HEADER::s_set_display_name:
+		{
+			auto res = cli.set_display_name(::login, ::password, ::metadata, status);
+			wr_pipe(res);
+		}
+			break;
+		case msg::HEADER::s_get_display_name:
+		{
+			std::string result;
+			auto res = cli.get_display_name(::login, ::password, result, status);
+			wr_pipe(res);
+			wr_pipe(result);
+		}
+			break;
+		case msg::HEADER::s_begin_session:
+		{
+			themispp::secure_key_pair_generator_t<themispp::EC> keypair;
+			auto res = cli.begin_session(::login, ::password, keypair.get_pub(), status);
+			wr_pipe(res);
+			if (res) wr_pipe(keypair.get_priv());
+		}
+			break;
+		case msg::HEADER::s_end_session:
+		{
+			auto res = cli.end_session(::login, ::password, status);
+			wr_pipe(res);
+		}
+			break;
+		case msg::HEADER::s_send_message:
+		{
+			msg::MESSAGE msg;
+			msg.destination = new std::string(::metadata);
+			msg.destination_size = msg.destination->size();
+			
+			msg.data = new std::vector<uint8_t>();
+			rd_pipe(*msg.data);
+			
+			std::vector<uint8_t> prikey;
+			rd_pipe(prikey);
+			
+			std::vector<uint8_t> pubkey;
+			auto res = cli.get_pubkey(::login, ::password, ::metadata, pubkey, status);
+			
+			std::cerr << "PubKey=\"";
+			for (auto&& c: pubkey)
+				std::cerr << c;
+			std::cerr << "\"\n";
+			
+			auto message = themispp::secure_message_t(prikey, pubkey);
+			*msg.data = message.encrypt(*msg.data);
+			msg.data_size = msg.data->size();
+			
+			res = cli.send_message(::login, ::password, msg, status) && res;
+			wr_pipe(res);
+		}
+			break;
+		case msg::HEADER::s_query_incoming:
+		{
+			msg::MESSAGE msg;
+			std::vector<uint8_t> prikey;
+			rd_pipe(prikey);
+			
+			auto res = cli.query_incoming(::login, ::password, msg, status);
+			
+			std::vector<uint8_t> pubkey;
+			res = cli.get_pubkey(::login, ::password, *msg.source, pubkey, status) && res;
+			
+			wr_pipe(res);
+			
+			auto message = themispp::secure_message_t(prikey, pubkey);
+			*msg.data = message.decrypt(*msg.data);
+			
+			wr_pipe(*msg.source);
+			wr_pipe(*msg.data);
+		}
+			break;
+		case msg::HEADER::s_check_online_status:
+		{
+			bool online = false;
+			auto res = cli.check_online_status(::login, ::password, ::metadata, online, status);
+			wr_pipe(res);
+			wr_pipe(online);
+		}
+			break;
+		case msg::HEADER::s_find_users_by_display_name:
+		{
+			std::list<std::string> list;
+			auto res = cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
+			wr_pipe(res);
+			wr_pipe(list.size());
+			for (auto&& i: list)
+				wr_pipe(i);
+		}
+			break;
+		case msg::HEADER::s_find_users_by_login:
+		{
+			std::list<std::string> list;
+			auto res = cli.find_users_by_login(::login, ::password, ::metadata, list, status);
+			wr_pipe(res);
+			wr_pipe(list.size());
+			for (auto&& i: list)
+				wr_pipe(i);
+		}
+			break;
+		default:
+			std::clog << "Invalid operation!\n";
+			::exit(-4);
+	}
+	std::clog << status << "\n";
 }
 
 void parse_args(int argc, char** argv)
