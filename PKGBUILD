@@ -7,7 +7,7 @@ url="https://github.com/$author/$pkgname"
 arch=("x86_64")
 license=('GPL3')
 depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb")
-makedepends=("cmake>=3.0" "inet-comm>=3.8-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
+makedepends=("cmake>=3.0" "inet-comm>=3.8-1" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
 
 _srcprefix="local:/"
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")

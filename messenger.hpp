@@ -356,7 +356,7 @@ namespace msg
 		}
 	};
 	
-	inline static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> generate_cert()
+	inline static std::pair<std::shared_ptr<std::vector<uint8_t>>, std::shared_ptr<std::vector<uint8_t>>> generate_cert()
 	{
 		std::string error;
 		
@@ -388,12 +388,15 @@ namespace msg
 		inline static client* create_client(const inet::inet_address& server_address)
 		{
 			auto certpair = generate_cert();
-			if (certpair.first.empty() || certpair.second.empty())
+			if (certpair.first->empty() || certpair.second->empty())
 				return nullptr;
 			
 			return new client(
 					server_address,
-					std::make_shared<inet::loader>(inet::input_steam(certpair.first), inet::input_steam(certpair.second))
+					std::make_shared<inet::loader>(
+							inet::input_stream::mkstream(certpair.first),
+							inet::input_stream::mkstream(certpair.second)
+					)
 			);
 		}
 		
@@ -754,12 +757,15 @@ namespace msg
 				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
 		{
 			auto certpair = generate_cert();
-			if (certpair.first.empty() || certpair.second.empty())
+			if (certpair.first->empty() || certpair.second->empty())
 				return nullptr;
 			
 			return new server(
 					max_clients, address, db_login, db_password,
-					std::make_shared<inet::loader>(inet::input_steam(certpair.first), inet::input_steam(certpair.second))
+					std::make_shared<inet::loader>(
+							inet::input_stream::mkstream(certpair.first),
+							inet::input_stream::mkstream(certpair.second)
+					)
 			);
 		}
 		
