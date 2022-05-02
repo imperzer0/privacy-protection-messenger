@@ -77,16 +77,16 @@ inline static void rd_pipe(T& val)
 	::read(idatapipe, &val, sizeof val);
 }
 
-template <typename Container, typename T>
-inline static void wr_pipe(const Container& cont)
+template <template <typename> typename Container, typename T>
+inline static void wr_pipe(const Container<T>& cont)
 {
 	size_t size = cont.size();
 	::write(odatapipe, &size, sizeof size);
 	if (size > 0) ::write(odatapipe, cont.data(), size);
 }
 
-template <typename Container, typename T>
-inline static void rd_pipe(Container& cont)
+template <template <typename> typename Container, typename T>
+inline static void rd_pipe(Container<T>& cont)
 {
 	size_t size = 0;
 	::read(idatapipe, &size, sizeof size);
