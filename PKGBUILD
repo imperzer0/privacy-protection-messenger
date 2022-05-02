@@ -1,6 +1,6 @@
 pkgname="privacy-protection-messenger"
 pkgver=1.2
-pkgrel=2
+pkgrel=3
 pkgdesc="Secure messenger backend"
 author="imperzer0"
 url="https://github.com/$author/$pkgname"
@@ -10,17 +10,19 @@ depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb")
 makedepends=("cmake>=3.0" "inet-comm>=3.8-1" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git")
 
 _srcprefix="local:/"
-_libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "network.hpp" "$pkgname.service")
+_libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "messenger.hpp" "constants.hpp" "$pkgname.service")
 
 for _libfile in ${_libfiles[@]}
 {
     source=(${source[@]} "$_srcprefix/$_libfile")
 }
 
-for _libfile in ${_libfiles[@]}
-{
-    md5sums=(${md5sums[@]} "SKIP")
-}
+md5sums=('a7abc0672242dedcd5e4f563456e7dbc'
+         'a2dba69f4367abe24cd54ba931c693bd'
+         '058646ab78672c97a2f18dffc1b56ebf'
+         '5870cc285cd690761cd23c994737fa54'
+         'd17f4a822e966a71ea10bac39429811d'
+         'cc8e63452b809611b046e7f27934c12e')
 
 _package_version=$pkgname" ("$pkgver"-"$pkgrel")"
 _var_directory="/var/lib/$pkgname"
