@@ -791,10 +791,10 @@ namespace msg
 		};
 	
 	public:
-		class mariadb_manager
+		class mariadb_user_manager
 		{
 		public:
-			inline mariadb_manager(const std::string& login, const std::string& password, std::string table_name)
+			inline mariadb_user_manager(const std::string& login, const std::string& password, std::string table_name)
 					: table_name(std::move(table_name))
 			{
 				try
@@ -809,12 +809,13 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::mariadb_manager(login, password, table_name)) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::mariadb_user_manager(login, password, table_name)) ": " << e.what()
+							  << std::endl;
 					::exit(e.getErrorCode());
 				}
 			}
 			
-			inline int32_t setup()
+			inline int32_t create()
 			{
 				try
 				{
@@ -834,7 +835,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::setup()) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::create()) ": " << e.what() << std::endl;
 					return e.getErrorCode();
 				}
 			}
@@ -861,7 +862,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::save_user(login, userdata)) ": " << e.what()
+					std::cerr << "Error in " _STR(mariadb_user_manager::save_user(login, userdata)) ": " << e.what()
 							  << std::endl;
 					return e.getErrorCode();
 				}
@@ -887,7 +888,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
 					return e.getErrorCode();
 				}
 			}
@@ -902,16 +903,16 @@ namespace msg
 					);
 					res->next();
 					
-					std::string salt = res->getString(1).c_str();
-					std::string password = res->getString(2).c_str();
-					std::string display_name = res->getString(3).c_str();
+					std::string salt = res->getString(3).c_str();
+					std::string password = res->getString(4).c_str();
+					std::string display_name = res->getString(2).c_str();
 					if (!salt.empty() || !password.empty() || !display_name.empty())
 						users.insert({login, USER_DATA{salt, password, display_name}});
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::load_user(login)) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::load_user(login)) ": " << e.what() << std::endl;
 					return e.getErrorCode();
 				}
 			}
@@ -927,7 +928,7 @@ namespace msg
 				return false;
 			}
 			
-			inline ~mariadb_manager()
+			inline ~mariadb_user_manager()
 			{
 				try
 				{
@@ -935,7 +936,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_manager::~mariadb_manager()) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::mariadb_user_manager()) ": " << e.what() << std::endl;
 				}
 			}
 		
@@ -948,14 +949,14 @@ namespace msg
 		static std::map<std::string, USER_STATUS> statuses;
 		static std::map<std::string, USER_DATA> users;
 		static MESSAGES incoming;
-		std::unique_ptr<mariadb_manager> db_user_manager = nullptr;
+		std::unique_ptr<mariadb_user_manager> db_user_manager = nullptr;
 		
 		
 		inline server(
 				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password,
 				std::shared_ptr<inet::loader> crt)
 				: inet::server(max_clients, address, client_processing, this, crt),
-				  db_user_manager(std::make_unique<mariadb_manager>(db_login, db_password, USERS_TABLE_NAME))
+				  db_user_manager(std::make_unique<mariadb_user_manager>(db_login, db_password, USERS_TABLE_NAME))
 		{ }
 		
 		inline static bool process_request(messenger_io io, const inet::inet_address& address, server* serv)
@@ -976,7 +977,7 @@ namespace msg
 						std::string display_name;
 						if (read_display_name(io, header, response, display_name))
 						{
-							if (int ret = serv->db_user_manager->load_user(login); ret && users.find(login) == users.end())
+							if (int ret = serv->db_user_manager->load_user(login); ret || users.find(login) == users.end())
 							{
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
@@ -1000,9 +1001,11 @@ namespace msg
 						if (read_data(io, header, data))
 						{
 							decltype(users.end()) user;
-							if (check_credentials(response, login, password, user))
+							if (check_credentials(response, login, password, serv, user))
 							{
 								user->second.password = data;
+								user->second.salt = "";
+								compute_passwd_hash(user->second.password, user->second.salt);
 								if (int ret = serv->db_user_manager->update_user(*user); ret)
 									::exit(ret);
 								::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
@@ -1017,7 +1020,7 @@ namespace msg
 						if (read_display_name(io, header, response, display_name))
 						{
 							decltype(users.end()) user;
-							if (check_credentials(response, login, password, user))
+							if (check_credentials(response, login, password, serv, user))
 							{
 								if (display_name.size() > MAX_DISPLAY_NAME)
 									display_name.resize(MAX_DISPLAY_NAME);
@@ -1033,7 +1036,7 @@ namespace msg
 					case HEADER::s_get_display_name:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							io.write(response);
 							response.err = HEADER::e_success;
@@ -1045,7 +1048,7 @@ namespace msg
 					case HEADER::s_begin_session:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							std::vector<uint8_t> pubkey;
 							io.read(pubkey);
@@ -1059,7 +1062,7 @@ namespace msg
 					case HEADER::s_end_session:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							statuses[user->first].is_session_running = false;
 							serv->db_user_manager->unload_user(user->first);
@@ -1071,7 +1074,7 @@ namespace msg
 					case HEADER::s_get_pubkey:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							std::string target;
 							read_data(io, header, target);
@@ -1090,7 +1093,7 @@ namespace msg
 					case HEADER::s_send_message:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							MESSAGE message;
 							if (io.read(message))
@@ -1114,7 +1117,7 @@ namespace msg
 					case HEADER::s_query_incoming:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							if (statuses[user->first].is_session_running)
 							{
@@ -1139,7 +1142,7 @@ namespace msg
 						std::string target;
 						if (read_data(io, header, target))
 						{
-							if (check_credentials(response, login, password, user))
+							if (check_credentials(response, login, password, serv, user))
 							{
 								auto target_user = statuses.find(target);
 								if (target_user != statuses.end())
@@ -1159,7 +1162,7 @@ namespace msg
 					case HEADER::s_find_users_by_display_name:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							std::string key;
 							if (read_data(io, header, key))
@@ -1190,7 +1193,7 @@ namespace msg
 					case HEADER::s_find_users_by_login:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, user))
+						if (check_credentials(response, login, password, serv, user))
 						{
 							std::string key;
 							if (read_data(io, header, key))
@@ -1228,8 +1231,14 @@ namespace msg
 			return false;
 		}
 		
-		inline static bool check_credentials(HEADER& response, const std::string& login, std::string& password, decltype(users.end())& user)
+		inline static bool check_credentials(
+				HEADER& response, const std::string& login, std::string& password, server* serv, decltype(users.end())& user)
 		{
+			user = users.find(login);
+			if (user == users.end())
+				if (int ret = serv->db_user_manager->load_user(login); ret)
+					return false;
+			
 			user = users.find(login);
 			if (user != users.end())
 			{

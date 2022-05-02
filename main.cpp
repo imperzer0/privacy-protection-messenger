@@ -17,7 +17,7 @@ static bool is_server = true;
 static int max_clients = 10;
 static const char* mariadb_login = "ppmadmin";
 static const char* mariadb_password = "default=uIaBycFQyYRDOXbXo.JyM0";
-static const char* setup_mariadb_table = nullptr;
+static bool create_users_table = false;
 
 static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
 
@@ -45,7 +45,7 @@ const option l_options[]{
 		{"dblogin",     required_argument, nullptr, 2},
 		{"dbpassword",  required_argument, nullptr, 3},
 		
-		{"setup-db",    required_argument, nullptr, 1},
+		{"create-tbl",  no_argument,       nullptr, 1},
 		{"constant",    optional_argument, nullptr, 10},
 		{"debug",       no_argument,       nullptr, 'd'},
 		{"version",     no_argument,       nullptr, 'v'},
@@ -106,12 +106,12 @@ int main(int argc, char** argv)
 	
 	parse_args(argc, argv);
 	
-	if (::setup_mariadb_table)
+	if (::create_users_table)
 	{
 		int exit_code;
 		{
-			msg::server::mariadb_manager manager(::mariadb_login, ::mariadb_password, ::setup_mariadb_table);
-			exit_code = manager.setup();
+			msg::server::mariadb_user_manager manager(::mariadb_login, ::mariadb_password, USERS_TABLE_NAME);
+			exit_code = manager.create();
 		}
 		::exit(exit_code);
 	}
@@ -149,7 +149,7 @@ void help(int code)
 	::printf("\n For SERVER mode\n");
 	::printf("o  --address|-a      <IP>           server ip address\n");
 	::printf("o  --max-clients|-c  <amount>       maximum clients to process at once\n");
-	::printf("o  --setup-db                       create table for users in mariadb database\n");
+	::printf("o  --create-tbl                     create registered users table in mariadb database\n");
 	::printf("o  --dblogin         <login>        database user login\n");
 	::printf("o  --dbpassword      <password>     database user password\n");
 	
@@ -403,7 +403,7 @@ void parse_args(int argc, char** argv)
 			
 			case 1:
 			{
-				::setup_mariadb_table = ::strdup(optarg);
+				::create_users_table = true;
 				break;
 			}
 			
