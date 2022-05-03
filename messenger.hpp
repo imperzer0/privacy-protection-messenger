@@ -858,7 +858,6 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					loaded[login] = true;
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -885,7 +884,6 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					loaded[login] = true;
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -897,7 +895,6 @@ namespace msg
 			
 			inline int32_t load_user(const std::string& login)
 			{
-				if (loaded[login]) return SUCCESS;
 				try
 				{
 					std::unique_ptr<sql::Statement> statement(connection->createStatement());
@@ -912,7 +909,6 @@ namespace msg
 					if (!salt.empty() || !password.empty() || !display_name.empty())
 					{
 						users.insert({login, USER_DATA{salt, password, display_name}});
-						loaded[login] = true;
 					}
 					return SUCCESS;
 				}
@@ -923,37 +919,9 @@ namespace msg
 				}
 			}
 			
-			inline int32_t reload_user(const std::string& login)
-			{
-				try
-				{
-					std::unique_ptr<sql::Statement> statement(connection->createStatement());
-					std::unique_ptr<sql::ResultSet> res(
-							statement->executeQuery("select * from " + table_name + " where login='" + login + "'")
-					);
-					res->next();
-					
-					std::string salt = res->getString(3).c_str();
-					std::string password = res->getString(4).c_str();
-					std::string display_name = res->getString(2).c_str();
-					if (!salt.empty() || !password.empty() || !display_name.empty())
-					{
-						users.insert({login, USER_DATA{salt, password, display_name}});
-						loaded[login] = true;
-					}
-					return SUCCESS;
-				}
-				catch (sql::SQLException& e)
-				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::reload_user(login)) ": " << e.what() << std::endl;
-					return e.getErrorCode();
-				}
-			}
-			
 			static inline bool unload_user(const std::string& login)
 			{
 				auto user = users.find(login);
-				loaded[user->first] = false;
 				if (user != users.end())
 				{
 					users.erase(user);
@@ -977,7 +945,6 @@ namespace msg
 		private:
 			std::unique_ptr<sql::Connection> connection = nullptr;
 			std::string table_name;
-			static std::map<std::string, bool> loaded;
 		};
 	
 	private:
@@ -1017,7 +984,7 @@ namespace msg
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
 								if (int ret = serv->db_user_manager->save_user(login, {salt, password, display_name}); ret)
-									::exit(ret);
+									std::cerr << ret << "\n";
 								::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1041,7 +1008,7 @@ namespace msg
 								user->second.salt = "";
 								compute_passwd_hash(user->second.password, user->second.salt);
 								if (int ret = serv->db_user_manager->update_user(*user); ret)
-									::exit(ret);
+									std::cerr << ret << "\n";
 								::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1060,7 +1027,7 @@ namespace msg
 									display_name.resize(MAX_DISPLAY_NAME);
 								user->second.display_name = display_name;
 								if (int ret = serv->db_user_manager->update_user(*user); ret)
-									::exit(ret);
+									std::cerr << ret << "\n";
 								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
 								response.err = HEADER::e_success;
 							}
@@ -1457,7 +1424,6 @@ namespace msg
 	std::map<std::string, server::USER_DATA> server::users;
 	std::map<std::string, server::USER_STATUS> server::statuses;
 	MESSAGES server::incoming;
-	std::map<std::string, bool> server::mariadb_user_manager::loaded;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{

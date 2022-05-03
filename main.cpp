@@ -239,7 +239,7 @@ void run_client()
 			std::string result;
 			auto res = cli.get_display_name(::login, ::password, result, status);
 			wr_pipe(res);
-			wr_pipe(result);
+			if (res) wr_pipe(result);
 		}
 			break;
 		case msg::HEADER::s_begin_session:
@@ -270,17 +270,27 @@ void run_client()
 			
 			std::vector<uint8_t> pubkey;
 			auto res = cli.get_pubkey(::login, ::password, ::metadata, pubkey, status);
+			std::cout << "gp(res) = " << res << "\n\n";
 			
 			std::cerr << "PubKey=\"";
 			for (auto&& c: pubkey)
 				std::cerr << c;
 			std::cerr << "\"\n";
 			
-			auto message = themispp::secure_message_t(prikey, pubkey);
-			*msg.data = message.encrypt(*msg.data);
-			msg.data_size = msg.data->size();
+			try
+			{
+				auto message = themispp::secure_message_t(prikey, pubkey);
+				*msg.data = message.encrypt(*msg.data);
+				msg.data_size = msg.data->size();
+			}
+			catch (themispp::exception_t& e)
+			{
+				std::cerr << "Error in message.encrypt(): " << e.what();
+				wr_pipe(false);
+			}
 			
 			res = cli.send_message(::login, ::password, msg, status) && res;
+			std::cout << "sm(res) = " << res << "\n\n";
 			wr_pipe(res);
 		}
 			break;
@@ -291,17 +301,29 @@ void run_client()
 			rd_pipe(prikey);
 			
 			auto res = cli.query_incoming(::login, ::password, msg, status);
+			std::cout << "qi(res) = " << res << "\n\n";
 			
 			std::vector<uint8_t> pubkey;
 			res = cli.get_pubkey(::login, ::password, *msg.source, pubkey, status) && res;
+			std::cout << "gp(res) = " << res << "\n\n";
+			
+			try
+			{
+				auto message = themispp::secure_message_t(prikey, pubkey);
+				*msg.data = message.decrypt(*msg.data);
+			}
+			catch (themispp::exception_t& e)
+			{
+				std::cerr << "Error in message.decrypt(): " << e.what();
+				wr_pipe(false);
+			}
 			
 			wr_pipe(res);
-			
-			auto message = themispp::secure_message_t(prikey, pubkey);
-			*msg.data = message.decrypt(*msg.data);
-			
-			wr_pipe(*msg.source);
-			wr_pipe(*msg.data);
+			if (res)
+			{
+				wr_pipe(*msg.source);
+				wr_pipe(*msg.data);
+			}
 		}
 			break;
 		case msg::HEADER::s_check_online_status:
@@ -309,7 +331,7 @@ void run_client()
 			bool online = false;
 			auto res = cli.check_online_status(::login, ::password, ::metadata, online, status);
 			wr_pipe(res);
-			wr_pipe(online);
+			if (res) wr_pipe(online);
 		}
 			break;
 		case msg::HEADER::s_find_users_by_display_name:
@@ -317,9 +339,12 @@ void run_client()
 			std::list<std::string> list;
 			auto res = cli.find_users_by_display_name(::login, ::password, ::metadata, list, status);
 			wr_pipe(res);
-			wr_pipe(list.size());
-			for (auto&& i: list)
-				wr_pipe(i);
+			if (res)
+			{
+				wr_pipe(list.size());
+				for (auto&& i: list)
+					wr_pipe(i);
+			}
 		}
 			break;
 		case msg::HEADER::s_find_users_by_login:
@@ -327,9 +352,12 @@ void run_client()
 			std::list<std::string> list;
 			auto res = cli.find_users_by_login(::login, ::password, ::metadata, list, status);
 			wr_pipe(res);
-			wr_pipe(list.size());
-			for (auto&& i: list)
-				wr_pipe(i);
+			if (res)
+			{
+				wr_pipe(list.size());
+				for (auto&& i: list)
+					wr_pipe(i);
+			}
 		}
 			break;
 		default:
