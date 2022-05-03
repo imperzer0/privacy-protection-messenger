@@ -858,7 +858,6 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					users[login] = userdata;
 					loaded[login] = true;
 					return SUCCESS;
 				}
@@ -886,7 +885,6 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
-					users[login] = userdata;
 					loaded[login] = true;
 					return SUCCESS;
 				}
@@ -1018,8 +1016,7 @@ namespace msg
 							{
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
-								auto&& tmp = users[login] = {salt, password, display_name};
-								if (int ret = serv->db_user_manager->save_user(login, tmp); ret)
+								if (int ret = serv->db_user_manager->save_user(login, {salt, password, display_name}); ret)
 									::exit(ret);
 								::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 								response.err = HEADER::e_success;
