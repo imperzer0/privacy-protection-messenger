@@ -858,6 +858,8 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
+					users[login] = userdata;
+					loaded[login] = true;
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -884,6 +886,8 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
+					users[login] = userdata;
+					loaded[login] = true;
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -894,6 +898,34 @@ namespace msg
 			}
 			
 			inline int32_t load_user(const std::string& login)
+			{
+				if (loaded[login]) return SUCCESS;
+				try
+				{
+					std::unique_ptr<sql::Statement> statement(connection->createStatement());
+					std::unique_ptr<sql::ResultSet> res(
+							statement->executeQuery("select * from " + table_name + " where login='" + login + "'")
+					);
+					res->next();
+					
+					std::string salt = res->getString(3).c_str();
+					std::string password = res->getString(4).c_str();
+					std::string display_name = res->getString(2).c_str();
+					if (!salt.empty() || !password.empty() || !display_name.empty())
+					{
+						users.insert({login, USER_DATA{salt, password, display_name}});
+						loaded[login] = true;
+					}
+					return SUCCESS;
+				}
+				catch (sql::SQLException& e)
+				{
+					std::cerr << "Error in " _STR(mariadb_user_manager::load_user(login)) ": " << e.what() << std::endl;
+					return e.getErrorCode();
+				}
+			}
+			
+			inline int32_t reload_user(const std::string& login)
 			{
 				try
 				{
@@ -907,12 +939,15 @@ namespace msg
 					std::string password = res->getString(4).c_str();
 					std::string display_name = res->getString(2).c_str();
 					if (!salt.empty() || !password.empty() || !display_name.empty())
+					{
 						users.insert({login, USER_DATA{salt, password, display_name}});
+						loaded[login] = true;
+					}
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::load_user(login)) ": " << e.what() << std::endl;
+					std::cerr << "Error in " _STR(mariadb_user_manager::reload_user(login)) ": " << e.what() << std::endl;
 					return e.getErrorCode();
 				}
 			}
@@ -920,6 +955,7 @@ namespace msg
 			static inline bool unload_user(const std::string& login)
 			{
 				auto user = users.find(login);
+				loaded[user->first] = false;
 				if (user != users.end())
 				{
 					users.erase(user);
@@ -943,6 +979,7 @@ namespace msg
 		private:
 			std::unique_ptr<sql::Connection> connection = nullptr;
 			std::string table_name;
+			static std::map<std::string, bool> loaded;
 		};
 	
 	private:
@@ -1423,6 +1460,7 @@ namespace msg
 	std::map<std::string, server::USER_DATA> server::users;
 	std::map<std::string, server::USER_STATUS> server::statuses;
 	MESSAGES server::incoming;
+	std::map<std::string, bool> server::mariadb_user_manager::loaded;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{
