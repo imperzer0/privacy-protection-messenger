@@ -809,8 +809,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::mariadb_user_manager(login, password, table_name)) ": " << e.what()
-							  << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::mariadb_user_manager(login, password, table_name)) ": " << e.what() << ENDENTLN;
 					::exit(e.getErrorCode());
 				}
 			}
@@ -835,7 +834,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::create()) ": " << e.what() << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::create()) ": " << e.what() << ENDENTLN;
 					return e.getErrorCode();
 				}
 			}
@@ -862,8 +861,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::save_user(login, userdata)) ": " << e.what()
-							  << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::save_user(login, userdata)) ": " << e.what() << ENDENTLN;
 					return e.getErrorCode();
 				}
 			}
@@ -888,7 +886,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::update_user(login, userdata)) ": " << e.what() << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::update_user(login, userdata)) ": " << e.what() << ENDENTLN;
 					return e.getErrorCode();
 				}
 			}
@@ -914,7 +912,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::load_user(login)) ": " << e.what() << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::load_user(login)) ": " << e.what() << ENDENTLN;
 					return e.getErrorCode();
 				}
 			}
@@ -938,7 +936,7 @@ namespace msg
 				}
 				catch (sql::SQLException& e)
 				{
-					std::cerr << "Error in " _STR(mariadb_user_manager::mariadb_user_manager()) ": " << e.what() << std::endl;
+					ERR << "Error in " _STR(mariadb_user_manager::mariadb_user_manager()) ": " << e.what() << ENDENTLN;
 				}
 			}
 		
