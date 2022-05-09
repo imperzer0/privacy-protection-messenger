@@ -10,7 +10,6 @@
 #define STDOUT_REDIRECTION_FILE VAR_DIRECTORY "/.stdout"
 #define STDERR_REDIRECTION_FILE VAR_DIRECTORY "/.stderr"
 
-static bool debug = false;
 static char* appname = nullptr;
 static bool is_server = true;
 
@@ -19,7 +18,7 @@ static const char* mariadb_login = "ppmadmin";
 static const char* mariadb_password = "default=uIaBycFQyYRDOXbXo.JyM0";
 static bool create_users_table = false;
 
-static inet::inet_address address = inet::inet_address(in_addr{INADDR_ANY}, DEFAULT_PORT);
+static inet::inet_address address = {in_addr{INADDR_ANY}, DEFAULT_PORT};
 
 static msg::HEADER::signal operation_signal = msg::HEADER::s_zero;
 static char* login;
@@ -120,7 +119,7 @@ int main(int argc, char** argv)
 	
 	if (is_server)
 	{
-		if (!::debug) daemonize_application();
+		if (!msg::verbose) daemonize_application();
 		opensyslog();
 		run_server();
 	}
@@ -170,7 +169,7 @@ void daemonize_application()
 	::umask(0);
 	
 	/* Close all open file descriptors */
-	for (int fd = ::sysconf(_SC_OPEN_MAX); fd > 0; --fd)
+	for (int fd = static_cast<int>(::sysconf(_SC_OPEN_MAX)); fd > 0; --fd)
 		::close(fd);
 	
 	/* Redirect stdout and stderr */
@@ -186,6 +185,7 @@ void opensyslog()
 void sighandle_syslog(int sig)
 {
 	::syslog(LOG_ERR, "SIG%s happened!\n  What: %s", ::sigabbrev_np(sig), ::sigdescr_np(sig));
+	::closelog();
 	::exit(sig);
 }
 
@@ -456,7 +456,7 @@ void parse_args(int argc, char** argv)
 			
 			case 'd':
 			{
-				::debug = true;
+				msg::verbose = true;
 				break;
 			}
 			

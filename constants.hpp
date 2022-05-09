@@ -48,12 +48,8 @@
 #  define CONFIG_DIR "/etc/" MESSENGER_NAME
 # endif
 
-# ifndef DEFAULT_WORK_DIR
-#  define DEFAULT_WORK_DIR "/tmp/" MESSENGER_NAME
-# endif
-
 # ifndef PASSWD_HASH_TYPE
-#  define PASSWD_HASH_TYPE passwd_sha512
+#  define PASSWD_HASH_TYPE passwd_sha_512
 # endif
 
 # ifndef DEFAULT_PORT
@@ -95,7 +91,6 @@ public:
 		PASSWORD_LIMIT,
 		DISPLAY_NAME_LIMIT,
 		CONFIG_DIRECTORY,
-		WORK_DIRECTORY,
 		PASSWD_HASH_ALGO,
 		MESSENGER_PORT,
 		SEARCH_USER_ENTRIES_LIMIT,
@@ -124,8 +119,6 @@ public:
 			constval = (DISPLAY_NAME_LIMIT);
 		else if (name == _STR(CONFIG_DIRECTORY))
 			constval = (CONFIG_DIRECTORY);
-		else if (name == _STR(WORK_DIRECTORY))
-			constval = (WORK_DIRECTORY);
 		else if (name == _STR(PASSWD_HASH_ALGO))
 			constval = (PASSWD_HASH_ALGO);
 		else if (name == _STR(MESSENGER_PORT))
@@ -152,7 +145,6 @@ public:
 			CASE_TO_STR(PASSWORD_LIMIT)
 			CASE_TO_STR(DISPLAY_NAME_LIMIT)
 			CASE_TO_STR(CONFIG_DIRECTORY)
-			CASE_TO_STR(WORK_DIRECTORY)
 			CASE_TO_STR(PASSWD_HASH_ALGO)
 			CASE_TO_STR(MESSENGER_PORT)
 			CASE_TO_STR(SEARCH_USER_ENTRIES_LIMIT)
@@ -210,9 +202,6 @@ public:
 				break;
 			case CONSTANT::CONFIG_DIRECTORY:
 				std::cout << CONFIG_DIR << "\n";
-				break;
-			case CONSTANT::WORK_DIRECTORY:
-				std::cout << DEFAULT_WORK_DIR << "\n";
 				break;
 			case CONSTANT::PASSWD_HASH_ALGO:
 				std::cout << MACRO_STR(PASSWD_HASH_TYPE) << "\n";

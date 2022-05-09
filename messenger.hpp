@@ -18,8 +18,6 @@
 
 # include "constants.hpp"
 
-#define ERR_COLOR color::red
-
 # define E_DERANGED "Server is deranged. This is a bug report it!"
 # define E_SUCCESS "Success."
 # define E_USER_ALREADY_EXISTS "This user already exists."
@@ -100,12 +98,11 @@
 
 namespace msg
 {
-	static const char* work_dir = DEFAULT_WORK_DIR;
 	static bool verbose = false;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{
-		static const unsigned char cov_2char[64] = {
+		static const unsigned char cov_2_char[64] = {
 				/* from crypto/des/fcrypt.c */
 				0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35,
 				0x36, 0x37, 0x38, 0x39, 0x41, 0x42, 0x43, 0x44,
@@ -122,18 +119,18 @@ namespace msg
 		typedef enum : int
 		{
 			passwd_unset = 0,
-			passwd_md5,
-			passwd_apr1,
-			passwd_sha256,
-			passwd_sha512,
-			passwd_aixmd5
+			passwd_md_5,
+			passwd_apr_1,
+			passwd_sha_256,
+			passwd_sha_512,
+			passwd_aix_md_5
 		} passwd_modes;
 		
-		inline static int random_bytes(char** data, size_t size);
+		inline static int random_bytes(char** data, int size);
 		
-		inline static char* md5crypt(const char* passwd, const char* magic, const char* salt);
+		inline static char* md_5_crypt(const char* passwd, const char* magic, const char* salt);
 		
-		inline static char* shacrypt(const char* passwd, const char* magic, const char* salt);
+		inline static char* sha_crypt(const char* passwd, const char* magic, const char* salt);
 		
 		inline static bool contains(const char* str, const char* substr);
 	}
@@ -709,7 +706,7 @@ namespace msg
 	
 	private:
 		inline explicit client(const inet::inet_address& server_address, std::shared_ptr<inet::loader> crt)
-				: messenger_io(inet::inet_io()), inet::client(server_address, crt)
+				: messenger_io(inet::inet_io()), inet::client(server_address, std::move(crt))
 		{
 			this->messenger_io::ssl = this->inet::client::ssl;
 			this->messenger_io::socket = this->inet::client::socket;
@@ -806,6 +803,7 @@ namespace msg
 							 {"password", password}}
 					);
 					connection = std::unique_ptr<sql::Connection>(driver->connect(url, properties));
+					if (verbose) ::syslog(LOG_DEBUG, "Connected to " DATABASE_NAME " database.");
 				}
 				catch (sql::SQLException& e)
 				{
@@ -830,6 +828,7 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
+					if (verbose) ::syslog(LOG_DEBUG, "Table \"%s\" created.", table_name.c_str());
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -857,6 +856,7 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
+					if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" saved.", login.c_str());
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -882,6 +882,7 @@ namespace msg
 							)
 					);
 					statement->executeQuery();
+					if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" updated.", login.c_str());
 					return SUCCESS;
 				}
 				catch (sql::SQLException& e)
@@ -907,6 +908,7 @@ namespace msg
 					if (!salt.empty() || !password.empty() || !display_name.empty())
 					{
 						users.insert({login, USER_DATA{salt, password, display_name}});
+						if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" loaded.", login.c_str());
 					}
 					return SUCCESS;
 				}
@@ -923,6 +925,7 @@ namespace msg
 				if (user != users.end())
 				{
 					users.erase(user);
+					if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" unloaded.", login.c_str());
 					return true;
 				}
 				return false;
@@ -933,6 +936,7 @@ namespace msg
 				try
 				{
 					connection->close();
+					if (verbose) ::syslog(LOG_DEBUG, "Disconnected from " DATABASE_NAME " database.");
 				}
 				catch (sql::SQLException& e)
 				{
@@ -955,7 +959,7 @@ namespace msg
 		inline server(
 				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password,
 				std::shared_ptr<inet::loader> crt)
-				: inet::server(max_clients, address, client_processing, this, crt),
+				: inet::server(max_clients, address, client_processing, this, std::move(crt)),
 				  db_user_manager(std::make_unique<mariadb_user_manager>(db_login, db_password, USERS_TABLE_NAME))
 		{ }
 		
@@ -977,7 +981,7 @@ namespace msg
 						std::string display_name;
 						if (read_display_name(io, header, response, display_name))
 						{
-							if (int ret = serv->db_user_manager->load_user(login); ret || users.find(login) == users.end())
+							if (serv->db_user_manager->load_user(login) || users.find(login) == users.end())
 							{
 								auto salt = std::string();
 								compute_passwd_hash(password, salt);
@@ -1256,21 +1260,21 @@ namespace msg
 		{
 			if (header.login_size > MAX_LOGIN)
 			{
-				::syslog(LOG_ERR, "HEADER::login_size = %zu which is too long.", header.login_size);
+				if (verbose) ::syslog(LOG_ERR, "HEADER::login_size = %zu which is too long.", header.login_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
 			}
 			
 			if (header.password_size > MAX_PASSWORD)
 			{
-				::syslog(LOG_ERR, "HEADER::password_size = %zu which is too long.", header.password_size);
+				if (verbose) ::syslog(LOG_ERR, "HEADER::password_size = %zu which is too long.", header.password_size);
 				response.err = HEADER::e_too_long_password;
 				return true;
 			}
 			
 			if (header.password_size < 8)
 			{
-				::syslog(LOG_ERR, "HEADER::password_size = %zu which is too short.", header.password_size);
+				if (verbose) ::syslog(LOG_ERR, "HEADER::password_size = %zu which is too short.", header.password_size);
 				response.err = HEADER::e_too_short_password;
 				return true;
 			}
@@ -1282,6 +1286,7 @@ namespace msg
 		{
 			char* arr_salt = (salt.empty() ? nullptr : salt.data());
 			char* hash = nullptr;
+			if (verbose) ::syslog(LOG_DEBUG, "Hashing password to operate with it.");
 			if (hash_passwd(&arr_salt, &hash, password.data(), __detail__::PASSWD_HASH_TYPE))
 			{
 				password.clear();
@@ -1289,7 +1294,7 @@ namespace msg
 				salt = arr_salt;
 				return true;
 			}
-			else ::syslog(LOG_ERR, "Failed to compute password hash.");
+			else if (verbose) ::syslog(LOG_ERR, "Failed to compute password hash.");
 			return false;
 		}
 		
@@ -1313,7 +1318,7 @@ namespace msg
 		{
 			if (header.display_name_size > MAX_DISPLAY_NAME)
 			{
-				::syslog(LOG_ERR, "HEADER::display_name_size = %zu which is too long.", header.display_name_size);
+				if (verbose) ::syslog(LOG_ERR, "HEADER::display_name_size = %zu which is too long.", header.display_name_size);
 				response.err = HEADER::e_too_long_display_name;
 				return true;
 			}
@@ -1356,7 +1361,7 @@ namespace msg
 			
 			if (salt_p == nullptr)
 			{
-				if (verbose) ::syslog(LOG_ERR, "Server projected incorrectly: salt_p == nullptr.");
+				if (verbose) ::syslog(LOG_ERR, "Incorrect arguments was passed: salt_p == nullptr.");
 				return false;
 			}
 			
@@ -1366,20 +1371,20 @@ namespace msg
 				size_t saltlen = 0;
 				size_t i;
 				
-				if (mode == __detail__::passwd_md5 || mode == __detail__::passwd_apr1 || mode == __detail__::passwd_aixmd5)
+				if (mode == __detail__::passwd_md_5 || mode == __detail__::passwd_apr_1 || mode == __detail__::passwd_aix_md_5)
 					saltlen = 8;
 				
-				if (mode == __detail__::passwd_sha256 || mode == __detail__::passwd_sha512)
+				if (mode == __detail__::passwd_sha_256 || mode == __detail__::passwd_sha_512)
 					saltlen = 16;
 				
 				assert(saltlen != 0);
 				
-				if (__detail__::random_bytes(salt_p, saltlen) <= 0)
+				if (__detail__::random_bytes(salt_p, static_cast<int>(saltlen)) <= 0)
 					return false;
 				
 				for (i = 0; i < saltlen; i++)
 				{
-					(*salt_p)[i] = __detail__::cov_2char[(*salt_p)[i] & 0x3f]; /* 6 bits */
+					(*salt_p)[i] = static_cast<char>(__detail__::cov_2_char[(*salt_p)[i] & 0x3f]); /* 6 bits */
 				}
 				(*salt_p)[i] = 0;
 # ifdef CHARSET_EBCDIC
@@ -1397,23 +1402,14 @@ namespace msg
 			
 			/* now compute password hash */
 			
-			if (mode == __detail__::passwd_md5 || mode == __detail__::passwd_apr1)
-			{
-				if (verbose) ::syslog(LOG_DEBUG, "Computing MD5 hash...");
-				*hash = __detail__::md5crypt(passwd, (mode == __detail__::passwd_md5 ? "1" : "apr1"), *salt_p);
-			}
+			if (mode == __detail__::passwd_md_5 || mode == __detail__::passwd_apr_1)
+				*hash = __detail__::md_5_crypt(passwd, (mode == __detail__::passwd_md_5 ? "1" : "apr1"), *salt_p);
 			
-			if (mode == __detail__::passwd_aixmd5)
-			{
-				if (verbose) ::syslog(LOG_DEBUG, "Computing MD5 hash...");
-				*hash = __detail__::md5crypt(passwd, "", *salt_p);
-			}
+			if (mode == __detail__::passwd_aix_md_5)
+				*hash = __detail__::md_5_crypt(passwd, "", *salt_p);
 			
-			if (mode == __detail__::passwd_sha256 || mode == __detail__::passwd_sha512)
-			{
-				if (verbose) ::syslog(LOG_DEBUG, "Computing SHA hash...");
-				*hash = __detail__::shacrypt(passwd, (mode == __detail__::passwd_sha256 ? "5" : "6"), *salt_p);
-			}
+			if (mode == __detail__::passwd_sha_256 || mode == __detail__::passwd_sha_512)
+				*hash = __detail__::sha_crypt(passwd, (mode == __detail__::passwd_sha_256 ? "5" : "6"), *salt_p);
 			
 			return hash != nullptr;
 		}
@@ -1425,15 +1421,15 @@ namespace msg
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{
-		inline static int random_bytes(char** data, size_t size)
+		inline static int random_bytes(char** data, int size)
 		{
 			if (size)
 			{
 				*data = new char[size];
 				::srandom(::time(nullptr));
-				for (size_t i = 0; i < size; ++i)
+				for (int i = 0; i < size; ++i)
 				{
-					(*data)[i] = ::random();
+					(*data)[i] = static_cast<char>(::random());
 				}
 				return size;
 			}
@@ -1450,8 +1446,9 @@ namespace msg
  * identical except that the 'magic' string was changed -- the laziest
  * application of the NIH principle I've ever encountered.)
  */
-		inline static char* md5crypt(const char* passwd, const char* magic, const char* salt)
+		inline static char* md_5_crypt(const char* passwd, const char* magic, const char* salt)
 		{
+			if (verbose) ::syslog(LOG_DEBUG, "Computing MD5 hash...");
 			/* "$apr1$..salt..$.......md5hash..........\0" */
 			static char out_buf[6 + 9 + 24 + 2];
 			unsigned char buf[MD5_DIGEST_LENGTH];
@@ -1459,15 +1456,14 @@ namespace msg
 			char ascii_salt[9];          /* Max 8 chars plus '\0' */
 			char* ascii_passwd = nullptr;
 			char* salt_out;
-			int n;
 			unsigned int i;
-			EVP_MD_CTX* md = nullptr, * md2 = nullptr;
-			size_t passwd_len, salt_len, magic_len;
+			EVP_MD_CTX* md = nullptr, * md_2 = nullptr;
+			size_t n, passwd_len, salt_len, magic_len;
 			
-			passwd_len = strlen(passwd);
+			passwd_len = ::strlen(passwd);
 			
 			out_buf[0] = 0;
-			magic_len = strlen(magic);
+			magic_len = ::strlen(magic);
 			OPENSSL_strlcpy(ascii_magic, magic, sizeof(ascii_magic));
 #ifdef CHARSET_EBCDIC
 			if ((magic[0] & 0x80) != 0)    /* High bit is 1 in EBCDIC alnums */
@@ -1476,7 +1472,7 @@ namespace msg
 			
 			/* The salt gets truncated to 8 chars */
 			OPENSSL_strlcpy(ascii_salt, salt, sizeof(ascii_salt));
-			salt_len = strlen(ascii_salt);
+			salt_len = ::strlen(ascii_salt);
 #ifdef CHARSET_EBCDIC
 			ebcdic2ascii(ascii_salt, ascii_salt, salt_len);
 #endif
@@ -1502,7 +1498,7 @@ namespace msg
 			
 			OPENSSL_strlcat(out_buf, ascii_salt, sizeof(out_buf));
 			
-			if (strlen(out_buf) > 6 + 8) /* assert "$apr1$..salt.." */
+			if (::strlen(out_buf) > 6 + 8) /* assert "$apr1$..salt.." */
 				goto err;
 			
 			salt_out = out_buf;
@@ -1527,13 +1523,13 @@ namespace msg
 			if (!EVP_DigestUpdate(md, ascii_salt, salt_len))
 				goto err;
 			
-			md2 = EVP_MD_CTX_new();
-			if (md2 == nullptr
-				|| !EVP_DigestInit_ex(md2, EVP_md5(), nullptr)
-				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
-				|| !EVP_DigestUpdate(md2, ascii_salt, salt_len)
-				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
-				|| !EVP_DigestFinal_ex(md2, buf, nullptr))
+			md_2 = EVP_MD_CTX_new();
+			if (md_2 == nullptr
+				|| !EVP_DigestInit_ex(md_2, EVP_md5(), nullptr)
+				|| !EVP_DigestUpdate(md_2, passwd, passwd_len)
+				|| !EVP_DigestUpdate(md_2, ascii_salt, salt_len)
+				|| !EVP_DigestUpdate(md_2, passwd, passwd_len)
+				|| !EVP_DigestFinal_ex(md_2, buf, nullptr))
 				goto err;
 			
 			for (i = passwd_len; i > sizeof(buf); i -= sizeof(buf))
@@ -1556,35 +1552,35 @@ namespace msg
 			
 			for (i = 0; i < 1000; i++)
 			{
-				if (!EVP_DigestInit_ex(md2, EVP_md5(), nullptr))
+				if (!EVP_DigestInit_ex(md_2, EVP_md5(), nullptr))
 					goto err;
 				if (!EVP_DigestUpdate(
-						md2,
+						md_2,
 						(i & 1) ? (const unsigned char*)passwd : buf,
 						(i & 1) ? passwd_len : sizeof(buf)))
 					goto err;
 				if (i % 3)
 				{
-					if (!EVP_DigestUpdate(md2, ascii_salt, salt_len))
+					if (!EVP_DigestUpdate(md_2, ascii_salt, salt_len))
 						goto err;
 				}
 				if (i % 7)
 				{
-					if (!EVP_DigestUpdate(md2, passwd, passwd_len))
+					if (!EVP_DigestUpdate(md_2, passwd, passwd_len))
 						goto err;
 				}
 				if (!EVP_DigestUpdate(
-						md2,
+						md_2,
 						(i & 1) ? buf : (const unsigned char*)passwd,
 						(i & 1) ? sizeof(buf) : passwd_len
 				))
 					goto err;
-				if (!EVP_DigestFinal_ex(md2, buf, nullptr))
+				if (!EVP_DigestFinal_ex(md_2, buf, nullptr))
 					goto err;
 			}
-			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md_2);
 			EVP_MD_CTX_free(md);
-			md2 = nullptr;
+			md_2 = nullptr;
 			md = nullptr;
 			
 			{
@@ -1611,16 +1607,14 @@ namespace msg
 				
 				for (i = 0; i < 15; i += 3)
 				{
-					*output++ = cov_2char[buf_perm[i + 2] & 0x3f];
-					*output++ = cov_2char[((buf_perm[i + 1] & 0xf) << 2) |
-										  (buf_perm[i + 2] >> 6)];
-					*output++ = cov_2char[((buf_perm[i] & 3) << 4) |
-										  (buf_perm[i + 1] >> 4)];
-					*output++ = cov_2char[buf_perm[i] >> 2];
+					*output++ = static_cast<char>(cov_2_char[buf_perm[i + 2] & 0x3f]);
+					*output++ = static_cast<char>(cov_2_char[((buf_perm[i + 1] & 0xf) << 2) | (buf_perm[i + 2] >> 6)]);
+					*output++ = static_cast<char>(cov_2_char[((buf_perm[i] & 3) << 4) | (buf_perm[i + 1] >> 4)]);
+					*output++ = static_cast<char>(cov_2_char[buf_perm[i] >> 2]);
 				}
 				assert(i == 15);
-				*output++ = cov_2char[buf_perm[i] & 0x3f];
-				*output++ = cov_2char[buf_perm[i] >> 6];
+				*output++ = static_cast<char>(cov_2_char[buf_perm[i] & 0x3f]);
+				*output++ = static_cast<char>(cov_2_char[buf_perm[i] >> 6]);
 				*output = 0;
 				assert(strlen(out_buf) < sizeof(out_buf));
 #ifdef CHARSET_EBCDIC
@@ -1632,7 +1626,7 @@ namespace msg
 
 err:
 			OPENSSL_free(ascii_passwd);
-			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md_2);
 			EVP_MD_CTX_free(md);
 			return nullptr;
 		}
@@ -1642,12 +1636,11 @@ err:
  * https://www.akkadia.org/drepper/SHA-crypt.txt
  * (note that it's in the public domain)
  */
-		inline static char* shacrypt(const char* passwd, const char* magic, const char* salt)
+		inline static char* sha_crypt(const char* passwd, const char* magic, const char* salt)
 		{
+			if (verbose) ::syslog(LOG_DEBUG, "Computing SHA hash...");
 			/* Prefix for optional rounds specification.  */
 			static const char rounds_prefix[] = "rounds=";
-			/* Maximum salt string length.  */
-# define SALT_LEN_MAX 16
 			/* Default number of rounds if not explicitly specified.  */
 # define ROUNDS_DEFAULT 5000
 			/* Minimum number of rounds.  */
@@ -1664,7 +1657,7 @@ err:
 			char ascii_salt[17];          /* Max 16 chars plus '\0' */
 			char* ascii_passwd = nullptr;
 			size_t n;
-			EVP_MD_CTX* md = nullptr, * md2 = nullptr;
+			EVP_MD_CTX* md = nullptr, * md_2 = nullptr;
 			const EVP_MD* sha = nullptr;
 			size_t passwd_len, salt_len, magic_len;
 			unsigned int rounds = ROUNDS_DEFAULT;        /* Default */
@@ -1766,13 +1759,13 @@ err:
 				|| !EVP_DigestUpdate(md, ascii_salt, salt_len))
 				goto err;
 			
-			md2 = EVP_MD_CTX_new();
-			if (md2 == nullptr
-				|| !EVP_DigestInit_ex(md2, sha, nullptr)
-				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
-				|| !EVP_DigestUpdate(md2, ascii_salt, salt_len)
-				|| !EVP_DigestUpdate(md2, passwd, passwd_len)
-				|| !EVP_DigestFinal_ex(md2, buf, nullptr))
+			md_2 = EVP_MD_CTX_new();
+			if (md_2 == nullptr
+				|| !EVP_DigestInit_ex(md_2, sha, nullptr)
+				|| !EVP_DigestUpdate(md_2, passwd, passwd_len)
+				|| !EVP_DigestUpdate(md_2, ascii_salt, salt_len)
+				|| !EVP_DigestUpdate(md_2, passwd, passwd_len)
+				|| !EVP_DigestFinal_ex(md_2, buf, nullptr))
 				goto err;
 			
 			for (n = passwd_len; n > buf_size; n -= buf_size)
@@ -1798,14 +1791,14 @@ err:
 				goto err;
 			
 			/* P sequence */
-			if (!EVP_DigestInit_ex(md2, sha, nullptr))
+			if (!EVP_DigestInit_ex(md_2, sha, nullptr))
 				goto err;
 			
 			for (n = passwd_len; n > 0; n--)
-				if (!EVP_DigestUpdate(md2, passwd, passwd_len))
+				if (!EVP_DigestUpdate(md_2, passwd, passwd_len))
 					goto err;
 			
-			if (!EVP_DigestFinal_ex(md2, temp_buf, nullptr))
+			if (!EVP_DigestFinal_ex(md_2, temp_buf, nullptr))
 				goto err;
 			
 			if ((p_bytes = static_cast<decltype(p_bytes)>(OPENSSL_zalloc(passwd_len))) == nullptr)
@@ -1815,14 +1808,14 @@ err:
 			memcpy(cp, temp_buf, n);
 			
 			/* S sequence */
-			if (!EVP_DigestInit_ex(md2, sha, nullptr))
+			if (!EVP_DigestInit_ex(md_2, sha, nullptr))
 				goto err;
 			
 			for (n = 16 + buf[0]; n > 0; n--)
-				if (!EVP_DigestUpdate(md2, ascii_salt, salt_len))
+				if (!EVP_DigestUpdate(md_2, ascii_salt, salt_len))
 					goto err;
 			
-			if (!EVP_DigestFinal_ex(md2, temp_buf, nullptr))
+			if (!EVP_DigestFinal_ex(md_2, temp_buf, nullptr))
 				goto err;
 			
 			if ((s_bytes = static_cast<decltype(s_bytes)>(OPENSSL_zalloc(salt_len))) == nullptr)
@@ -1833,36 +1826,36 @@ err:
 			
 			for (n = 0; n < rounds; n++)
 			{
-				if (!EVP_DigestInit_ex(md2, sha, nullptr))
+				if (!EVP_DigestInit_ex(md_2, sha, nullptr))
 					goto err;
 				if (!EVP_DigestUpdate(
-						md2,
+						md_2,
 						(n & 1) ? (const unsigned char*)p_bytes : buf,
 						(n & 1) ? passwd_len : buf_size
 				))
 					goto err;
 				if (n % 3)
 				{
-					if (!EVP_DigestUpdate(md2, s_bytes, salt_len))
+					if (!EVP_DigestUpdate(md_2, s_bytes, salt_len))
 						goto err;
 				}
 				if (n % 7)
 				{
-					if (!EVP_DigestUpdate(md2, p_bytes, passwd_len))
+					if (!EVP_DigestUpdate(md_2, p_bytes, passwd_len))
 						goto err;
 				}
 				if (!EVP_DigestUpdate(
-						md2,
+						md_2,
 						(n & 1) ? buf : (const unsigned char*)p_bytes,
 						(n & 1) ? buf_size : passwd_len
 				))
 					goto err;
-				if (!EVP_DigestFinal_ex(md2, buf, nullptr))
+				if (!EVP_DigestFinal_ex(md_2, buf, nullptr))
 					goto err;
 			}
-			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md_2);
 			EVP_MD_CTX_free(md);
-			md2 = nullptr;
+			md_2 = nullptr;
 			md = nullptr;
 			OPENSSL_free(p_bytes);
 			OPENSSL_free(s_bytes);
@@ -1878,7 +1871,7 @@ err:
         int i = (N);                                                    \
         while (i-- > 0)                                                 \
             {                                                           \
-                *cp++ = cov_2char[w & 0x3f];                            \
+                *cp++ = cov_2_char[w & 0x3f];                            \
                 w >>= 6;                                                \
             }                                                           \
     } while (0)
@@ -1933,7 +1926,7 @@ err:
 			return out_buf;
 
 err:
-			EVP_MD_CTX_free(md2);
+			EVP_MD_CTX_free(md_2);
 			EVP_MD_CTX_free(md);
 			OPENSSL_free(p_bytes);
 			OPENSSL_free(s_bytes);
