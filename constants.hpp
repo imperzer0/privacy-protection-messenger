@@ -72,6 +72,14 @@
 #  define VAR_DIRECTORY "/var/lib/" MESSENGER_NAME
 # endif
 
+# ifndef MARIADB_DEFAULT_LOGIN
+#  define MARIADB_DEFAULT_LOGIN "ppmadmin"
+# endif
+
+# ifndef MARIADB_DEFAULT_PASSWORD
+#  define MARIADB_DEFAULT_PASSWORD "default=uIaBycFQyYRDOXbXo.JyM0"
+# endif
+
 #define CASE_TO_STR(opt) case opt: return _STR(opt);
 
 
@@ -94,6 +102,8 @@ public:
 		PASSWD_HASH_ALGO,
 		MESSENGER_PORT,
 		SEARCH_USER_ENTRIES_LIMIT,
+		MARIADB_LOGIN,
+		MARIADB_PASSWORD,
 		maxval
 	};
 	
@@ -125,6 +135,10 @@ public:
 			constval = (MESSENGER_PORT);
 		else if (name == _STR(SEARCH_USER_ENTRIES_LIMIT))
 			constval = (SEARCH_USER_ENTRIES_LIMIT);
+		else if (name == _STR(MARIADB_LOGIN))
+			constval = (MARIADB_LOGIN);
+		else if (name == _STR(MARIADB_PASSWORD))
+			constval = (MARIADB_PASSWORD);
 		else constval = (invalid);
 	}
 	
@@ -148,6 +162,8 @@ public:
 			CASE_TO_STR(PASSWD_HASH_ALGO)
 			CASE_TO_STR(MESSENGER_PORT)
 			CASE_TO_STR(SEARCH_USER_ENTRIES_LIMIT)
+			CASE_TO_STR(MARIADB_LOGIN)
+			CASE_TO_STR(MARIADB_PASSWORD)
 			CASE_TO_STR(maxval)
 			default:
 				return _STR(invalid);
@@ -211,6 +227,12 @@ public:
 				break;
 			case CONSTANT::SEARCH_USER_ENTRIES_LIMIT:
 				std::cout << MAX_USER_ENTRIES_AMOUNT << "\n";
+				break;
+			case CONSTANT::MARIADB_LOGIN:
+				std::cout << MARIADB_DEFAULT_LOGIN << "\n";
+				break;
+			case CONSTANT::MARIADB_PASSWORD:
+				std::cout << MARIADB_DEFAULT_PASSWORD << "\n";
 				break;
 			default:
 				CONSTANT::print_all_constants(std::cout);

@@ -12,10 +12,11 @@
 
 static char* appname = nullptr;
 static bool is_server = true;
+static bool debug = false;
 
 static int max_clients = 10;
-static const char* mariadb_login = "ppmadmin";
-static const char* mariadb_password = "default=uIaBycFQyYRDOXbXo.JyM0";
+static const char* mariadb_login = MARIADB_DEFAULT_LOGIN;
+static const char* mariadb_password = MARIADB_DEFAULT_PASSWORD;
 static bool create_users_table = false;
 
 static inet::inet_address address = {in_addr{INADDR_ANY}, DEFAULT_PORT};
@@ -47,6 +48,7 @@ const option l_options[]{
 		{"create-tbl",  no_argument,       nullptr, 1},
 		{"constant",    optional_argument, nullptr, 10},
 		{"debug",       no_argument,       nullptr, 'd'},
+		{"verbose",     no_argument,       nullptr, 'V'},
 		{"version",     no_argument,       nullptr, 'v'},
 		{"help",        no_argument,       nullptr, '?'},
 		{nullptr}
@@ -119,7 +121,7 @@ int main(int argc, char** argv)
 	
 	if (is_server)
 	{
-		if (!msg::verbose) daemonize_application();
+		if (!::debug) daemonize_application();
 		opensyslog();
 		run_server();
 	}
@@ -154,7 +156,8 @@ void help(int code)
 	
 	::printf("\n General\n");
 	::printf("o  --constant        (<CONSTANT>)   print CONSTANT value or list available\n");
-	::printf("o  --debug|-d                       enable debug mode\n");
+	::printf("o  --debug|-d                       run in debug mode\n");
+	::printf("o  --verbose|-V                     print extra info\n");
 	::printf("o  --version|-v                     print application version\n");
 	::printf("o  --help|-?                        print help\n");
 	::printf(COLOR_CYAN "\nDesignation 'm' is for mandatory and 'o' - for optional.\n" COLOR_RESET "\n");
@@ -455,6 +458,12 @@ void parse_args(int argc, char** argv)
 			}
 			
 			case 'd':
+			{
+				::debug = true;
+				break;
+			}
+			
+			case 'V':
 			{
 				msg::verbose = true;
 				break;
