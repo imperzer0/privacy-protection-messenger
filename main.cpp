@@ -28,7 +28,7 @@ static char* metadata;
 static int idatapipe = -1;
 static int odatapipe = -1;
 
-static constexpr const char* s_options = "m:a:o:l:p:M:I:O:c:dv?";
+static constexpr const char* s_options = "m:a:o:l:p:M:I:O:c:dVv?";
 const option l_options[]{
 		{"mode",        required_argument, nullptr, 'm'},
 		
