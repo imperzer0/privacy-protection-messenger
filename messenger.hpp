@@ -972,6 +972,7 @@ namespace msg
 			std::string login, password;
 			if (read_credentials(io, header, response, login, password))
 			{
+				if (verbose) ::syslog(LOG_DEBUG, "Processing signal \"%s\"...", HEADER::signal_to_name(header.sig));
 				switch (header.sig)
 				{
 					case HEADER::s_zero:
@@ -987,7 +988,7 @@ namespace msg
 								compute_passwd_hash(password, salt);
 								if (int ret = serv->db_user_manager->save_user(login, {salt, password, display_name}); ret)
 									std::cerr << ret << "\n";
-								::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
+								if (verbose) ::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 								response.err = HEADER::e_success;
 							}
 							else
@@ -1030,7 +1031,7 @@ namespace msg
 								user->second.display_name = display_name;
 								if (int ret = serv->db_user_manager->update_user(*user); ret)
 									std::cerr << ret << "\n";
-								::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
+								if (verbose) ::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
 								response.err = HEADER::e_success;
 							}
 						}
@@ -1044,7 +1045,7 @@ namespace msg
 							io.write(response);
 							response.err = HEADER::e_success;
 							io.write(user->second.display_name);
-							::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
+							if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
 						}
 						return true;
 					}
@@ -1057,7 +1058,7 @@ namespace msg
 							io.read(pubkey);
 							statuses[user->first].pubkey = pubkey;
 							statuses[user->first].is_session_running = true;
-							::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
+							if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
 						return io.write(response);
@@ -1069,7 +1070,7 @@ namespace msg
 						{
 							statuses[user->first].is_session_running = false;
 							serv->db_user_manager->unload_user(user->first);
-							::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
+							if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
 						return io.write(response);
