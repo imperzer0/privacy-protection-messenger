@@ -10,6 +10,10 @@ function permit_set_display_name(user)
     return true
 end
 
+function permit_get_display_name(user, target)
+    return true
+end
+
 function permit_begin_session(user)
     return true
 end

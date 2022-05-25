@@ -1,13 +1,13 @@
 pkgname="privacy-protection-messenger"
-pkgver=1.5
+pkgver=2.0
 pkgrel=0
 pkgdesc="Secure messenger backend"
 author="imperzer0"
 url="https://github.com/$author/$pkgname"
 arch=("x86_64")
 license=('GPL3')
-depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb" "lua>=5.3")
-makedepends=("cmake>=3.0" "inet-comm>=3.9-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git" "lua>=5.3")
+depends=("openssl" "iptables-nft" "themispp>=0.14.1" "mariadb" "lua")
+makedepends=("cmake>=3.0" "inet-comm>=3.9-0" "openssl" "themispp" "mariadb" "mariadb-connector-cpp-git" "lua")
 
 _srcprefix="local:/"
 _libfiles=("CMakeLists.txt" "main.cpp" "color.hpp" "messenger.hpp" "constants.hpp" "$pkgname.service" "config.lua")

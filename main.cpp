@@ -240,7 +240,7 @@ void run_client()
 		case msg::HEADER::s_get_display_name:
 		{
 			std::string result;
-			auto res = cli.get_display_name(::login, ::password, result, status);
+			auto res = cli.get_display_name(::login, ::password, ::metadata, result, status);
 			wr_pipe(res);
 			if (res) wr_pipe(result);
 		}

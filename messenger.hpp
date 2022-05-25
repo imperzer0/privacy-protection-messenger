@@ -23,6 +23,7 @@
 # define LUA_REGISTER_USER_FUNC "permit_register_user"
 # define LUA_SET_PASSWORD_FUNC "permit_set_password"
 # define LUA_SET_DISPLAY_NAME_FUNC "permit_set_display_name"
+# define LUA_GET_DISPLAY_NAME_FUNC "permit_get_display_name"
 # define LUA_BEGIN_SESSION_FUNC "permit_begin_session"
 # define LUA_GET_PUBKEY_FUNC "permit_get_pubkey"
 # define LUA_SEND_MESSAGE_FUNC "permit_send_message"
@@ -478,11 +479,13 @@ namespace msg
 			return false;
 		}
 		
-		inline bool get_display_name(const std::string& login, const std::string& password, std::string& display_name, std::string& status)
+		inline bool get_display_name(
+				const std::string& login, const std::string& password, const std::string& target, std::string& display_name, std::string& status)
 		{
-			messenger_io::write(HEADER{HEADER::s_get_display_name, login.size(), password.size()});
+			messenger_io::write(HEADER{HEADER::s_get_display_name, login.size(), password.size(), 0, target.size()});
 			messenger_io::write_raw(login);
 			messenger_io::write_raw(password);
+			messenger_io::write_raw(target);
 			HEADER res;
 			if (messenger_io::read(res))
 			{
@@ -978,16 +981,6 @@ namespace msg
 		inline ~server()
 		{ lua_close(lua); }
 		
-		inline static bool check_lua(lua_State* lua, int r)
-		{
-			if (r != LUA_OK)
-			{
-				::syslog(LOG_ERR, "[Lua] reported an error: %s", lua_tostring(lua, -1));
-				return false;
-			}
-			return true;
-		}
-		
 		inline static bool process_request(messenger_io io, const inet::inet_address& address, server* serv)
 		{
 			HEADER header;
@@ -995,7 +988,6 @@ namespace msg
 			
 			HEADER response{header.sig};
 			std::string login, password;
-			auto lua = serv->lua;
 			if (read_credentials(io, header, response, login, password))
 			{
 				if (verbose) ::syslog(LOG_DEBUG, "Processing signal \"%s\"...", HEADER::signal_to_name(header.sig));
@@ -1010,41 +1002,14 @@ namespace msg
 						{
 							if (serv->db_user_manager->load_user(login) || users.find(login) == users.end())
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								auto salt = std::string();
+								compute_passwd_hash(password, salt);
+								if (serv->lua_request_permission(LUA_REGISTER_USER_FUNC, login.c_str(), password.c_str(), display_name.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_REGISTER_USER_FUNC);
-									if (lua_isfunction(lua, -1))
-									{
-										auto salt = std::string();
-										compute_passwd_hash(password, salt);
-										
-										lua_createtable(lua, 0, 3);
-										
-										lua_pushstring(lua, login.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, display_name.c_str());
-										lua_setfield(lua, -2, "display_name");
-										
-										if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												serv->db_user_manager->save_user(login, {salt, password, display_name});
-												if (verbose) ::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
-												response.err = HEADER::e_success;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_REGISTER_USER_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_REGISTER_USER_FUNC);
-									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_REGISTER_USER_FUNC " is not a function");
+									serv->db_user_manager->save_user(login, {salt, password, display_name});
+									if (verbose) ::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
+									response.err = HEADER::e_success;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 							else
 							{
@@ -1062,43 +1027,16 @@ namespace msg
 							decltype(users.end()) user;
 							if (check_credentials(response, login, password, serv, user))
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								auto salt = std::string();
+								compute_passwd_hash(data, salt);
+								if (serv->lua_request_permission(LUA_SET_PASSWORD_FUNC, user, "new_password", data.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_SET_PASSWORD_FUNC);
-									if (lua_isfunction(lua, -1))
-									{
-										auto salt = std::string();
-										compute_passwd_hash(data, salt);
-										
-										lua_createtable(lua, 0, 3);
-										
-										lua_pushstring(lua, login.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, data.c_str());
-										lua_setfield(lua, -2, "new_password");
-										
-										if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												user->second.password = data;
-												user->second.salt = salt;
-												serv->db_user_manager->update_user(*user);
-												::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
-												response.err = HEADER::e_success;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_SET_PASSWORD_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_SET_PASSWORD_FUNC);
-									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_SET_PASSWORD_FUNC " is not a function");
+									user->second.password = data;
+									user->second.salt = salt;
+									serv->db_user_manager->update_user(*user);
+									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
+									response.err = HEADER::e_success;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 						}
 						return io.write(response);
@@ -1111,47 +1049,16 @@ namespace msg
 							decltype(users.end()) user;
 							if (check_credentials(response, login, password, serv, user))
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								if (serv->lua_request_permission(LUA_SET_DISPLAY_NAME_FUNC, user, "new_display_name", display_name.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_SET_DISPLAY_NAME_FUNC);
-									if (lua_isfunction(lua, -1))
-									{
-										lua_createtable(lua, 0, 4);
-										
-										lua_pushstring(lua, user->first.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, user->second.password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, user->second.display_name.c_str());
-										lua_setfield(lua, -2, "display_name");
-										
-										lua_pushstring(lua, display_name.c_str());
-										lua_setfield(lua, -2, "new_display_name");
-										
-										if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												if (display_name.size() > MAX_DISPLAY_NAME)
-													display_name.resize(MAX_DISPLAY_NAME);
-												user->second.display_name = display_name;
-												serv->db_user_manager->update_user(*user);
-												if (verbose)
-													::syslog(
-															LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(),
-															display_name.c_str());
-												response.err = HEADER::e_success;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_SET_DISPLAY_NAME_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_SET_DISPLAY_NAME_FUNC);
-									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_SET_DISPLAY_NAME_FUNC " is not a function");
+									if (display_name.size() > MAX_DISPLAY_NAME)
+										display_name.resize(MAX_DISPLAY_NAME);
+									user->second.display_name = display_name;
+									serv->db_user_manager->update_user(*user);
+									if (verbose)
+										::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
+									response.err = HEADER::e_success;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 						}
 						return io.write(response);
@@ -1159,12 +1066,19 @@ namespace msg
 					case HEADER::s_get_display_name:
 					{
 						decltype(users.end()) user;
-						if (check_credentials(response, login, password, serv, user))
+						std::string data;
+						if (read_data(io, header, data))
 						{
-							io.write(response);
-							response.err = HEADER::e_success;
-							io.write(user->second.display_name);
-							if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
+							if (check_credentials(response, login, password, serv, user))
+							{
+								if (serv->lua_request_permission(LUA_GET_DISPLAY_NAME_FUNC, user, data.c_str()))
+								{
+									io.write(response);
+									response.err = HEADER::e_success;
+									io.write(user->second.display_name);
+									if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
+								}
+							}
 						}
 						return true;
 					}
@@ -1173,44 +1087,15 @@ namespace msg
 						decltype(users.end()) user;
 						if (check_credentials(response, login, password, serv, user))
 						{
-							if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+							if (serv->lua_request_permission(LUA_BEGIN_SESSION_FUNC, user))
 							{
-								luaL_openlibs(lua);
-								lua_getglobal(lua, LUA_BEGIN_SESSION_FUNC);
-								if (lua_isfunction(lua, -1))
-								{
-									auto salt = std::string();
-									compute_passwd_hash(password, salt);
-									
-									lua_createtable(lua, 0, 3);
-									
-									lua_pushstring(lua, user->first.c_str());
-									lua_setfield(lua, -2, "login");
-									
-									lua_pushstring(lua, user->second.password.c_str());
-									lua_setfield(lua, -2, "password");
-									
-									lua_pushstring(lua, user->second.display_name.c_str());
-									lua_setfield(lua, -2, "display_name");
-									
-									if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
-									{
-										if (lua_toboolean(lua, -1))
-										{
-											std::vector<uint8_t> pubkey;
-											io.read(pubkey);
-											statuses[user->first].pubkey = pubkey;
-											statuses[user->first].is_session_running = true;
-											if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
-											response.err = HEADER::e_success;
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_BEGIN_SESSION_FUNC " returned false");
-									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_BEGIN_SESSION_FUNC);
-								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_BEGIN_SESSION_FUNC " is not a function");
+								std::vector<uint8_t> pubkey;
+								io.read(pubkey);
+								statuses[user->first].pubkey = pubkey;
+								statuses[user->first].is_session_running = true;
+								if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
+								response.err = HEADER::e_success;
 							}
-							else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 						}
 						return io.write(response);
 					}
@@ -1236,43 +1121,13 @@ namespace msg
 							auto target_it = statuses.find(target);
 							if (target_it != statuses.end())
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								if (serv->lua_request_permission(LUA_GET_PUBKEY_FUNC, user, target.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_GET_PUBKEY_FUNC);
-									if (lua_isfunction(lua, -1))
-									{
-										lua_createtable(lua, 0, 3);
-										
-										lua_pushstring(lua, user->first.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, user->second.password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, user->second.display_name.c_str());
-										lua_setfield(lua, -2, "display_name");
-										
-										
-										lua_pushstring(lua, target_it->first.c_str());
-										
-										
-										if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												response.err = HEADER::e_success;
-												io.write(response);
-												io.write(target_it->second.pubkey);
-												return true;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_GET_PUBKEY_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_GET_PUBKEY_FUNC);
-									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_GET_PUBKEY_FUNC " is not a function");
+									response.err = HEADER::e_success;
+									io.write(response);
+									io.write(target_it->second.pubkey);
+									return true;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 							response.err = HEADER::e_user_not_found;
 						}
@@ -1292,41 +1147,11 @@ namespace msg
 									message.source_size = user->first.size();
 									if (users.contains(*message.destination))
 									{
-										if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+										if (serv->lua_request_permission(LUA_SEND_MESSAGE_FUNC, user, message.destination->c_str()))
 										{
-											luaL_openlibs(lua);
-											lua_getglobal(lua, LUA_SEND_MESSAGE_FUNC);
-											if (lua_isfunction(lua, -1))
-											{
-												lua_createtable(lua, 0, 4);
-												
-												lua_pushstring(lua, user->first.c_str());
-												lua_setfield(lua, -2, "login");
-												
-												lua_pushstring(lua, user->second.password.c_str());
-												lua_setfield(lua, -2, "password");
-												
-												lua_pushstring(lua, user->second.display_name.c_str());
-												lua_setfield(lua, -2, "display_name");
-												
-												
-												lua_pushstring(lua, message.destination->c_str());
-												
-												
-												if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
-												{
-													if (lua_toboolean(lua, -1))
-													{
-														incoming.put_message(*message.destination, message);
-														response.err = HEADER::e_success;
-													}
-													else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_SEND_MESSAGE_FUNC " returned false");
-												}
-												else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_SEND_MESSAGE_FUNC);
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_SEND_MESSAGE_FUNC " is not a function");
+											incoming.put_message(*message.destination, message);
+											response.err = HEADER::e_success;
 										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 									}
 									else response.err = HEADER::e_user_not_found;
 								}
@@ -1366,43 +1191,14 @@ namespace msg
 								auto target_user = statuses.find(target);
 								if (target_user != statuses.end())
 								{
-									if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+									if (serv->lua_request_permission(LUA_CHECK_ONLINE_STATUS_FUNC, user, target.c_str()))
 									{
-										luaL_openlibs(lua);
-										lua_getglobal(lua, LUA_CHECK_ONLINE_STATUS_FUNC);
-										if (lua_isfunction(lua, -1))
-										{
-											lua_createtable(lua, 0, 4);
-											
-											lua_pushstring(lua, user->first.c_str());
-											lua_setfield(lua, -2, "login");
-											
-											lua_pushstring(lua, user->second.password.c_str());
-											lua_setfield(lua, -2, "password");
-											
-											lua_pushstring(lua, user->second.display_name.c_str());
-											lua_setfield(lua, -2, "display_name");
-											
-											
-											lua_pushstring(lua, target.c_str());
-											
-											if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
-											{
-												if (lua_toboolean(lua, -1))
-												{
-													response.data_size = sizeof(bool);
-													response.err = HEADER::e_success;
-													io.write(response);
-													io.write(target_user->second.is_session_running);
-													return true;
-												}
-												else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_CHECK_ONLINE_STATUS_FUNC " returned false");
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_CHECK_ONLINE_STATUS_FUNC);
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_CHECK_ONLINE_STATUS_FUNC " is not a function");
+										response.data_size = sizeof(bool);
+										response.err = HEADER::e_success;
+										io.write(response);
+										io.write(target_user->second.is_session_running);
+										return true;
 									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 								}
 								else response.err = HEADER::e_user_not_found;
 							}
@@ -1417,55 +1213,26 @@ namespace msg
 							std::string key;
 							if (read_data(io, header, key))
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								if (serv->lua_request_permission(LUA_FIND_USERS_BY_DISPLAY_NAME_FUNC, user, key.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_FIND_USERS_BY_DISPLAY_NAME_FUNC);
-									if (lua_isfunction(lua, -1))
+									response.err = HEADER::e_success;
+									io.write(response);
+									
+									std::list<std::string> matches;
+									for (const auto& u: users)
 									{
-										lua_createtable(lua, 0, 4);
-										
-										lua_pushstring(lua, user->first.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, user->second.password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, user->second.display_name.c_str());
-										lua_setfield(lua, -2, "display_name");
-										
-										
-										lua_pushstring(lua, key.c_str());
-										
-										if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												response.err = HEADER::e_success;
-												io.write(response);
-												
-												std::list<std::string> matches;
-												for (const auto& u: users)
-												{
-													if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
-													if (u.second.display_name.size() >= key.size() &&
-														__detail__::contains(u.second.display_name.c_str(), key.c_str()))
-														matches.push_back(u.first);
-												}
-												
-												io.write(matches.size());
-												for (auto& m: matches)
-													io.write(m);
-												
-												return true;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_FIND_USERS_BY_DISPLAY_NAME_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_FIND_USERS_BY_DISPLAY_NAME_FUNC);
+										if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
+										if (u.second.display_name.size() >= key.size() &&
+											__detail__::contains(u.second.display_name.c_str(), key.c_str()))
+											matches.push_back(u.first);
 									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_FIND_USERS_BY_DISPLAY_NAME_FUNC " is not a function");
+									
+									io.write(matches.size());
+									for (auto& m: matches)
+										io.write(m);
+									
+									return true;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 							else return false;
 						}
@@ -1479,55 +1246,26 @@ namespace msg
 							std::string key;
 							if (read_data(io, header, key))
 							{
-								if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+								if (serv->lua_request_permission(LUA_FIND_USERS_BY_LOGIN_FUNC, user, key.c_str()))
 								{
-									luaL_openlibs(lua);
-									lua_getglobal(lua, LUA_FIND_USERS_BY_LOGIN_FUNC);
-									if (lua_isfunction(lua, -1))
+									response.err = HEADER::e_success;
+									io.write(response);
+									
+									std::list<std::string> matches;
+									for (const auto& u: statuses)
 									{
-										lua_createtable(lua, 0, 4);
-										
-										lua_pushstring(lua, user->first.c_str());
-										lua_setfield(lua, -2, "login");
-										
-										lua_pushstring(lua, user->second.password.c_str());
-										lua_setfield(lua, -2, "password");
-										
-										lua_pushstring(lua, user->second.display_name.c_str());
-										lua_setfield(lua, -2, "display_name");
-										
-										
-										lua_pushstring(lua, key.c_str());
-										
-										if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
-										{
-											if (lua_toboolean(lua, -1))
-											{
-												response.err = HEADER::e_success;
-												io.write(response);
-												
-												std::list<std::string> matches;
-												for (const auto& u: statuses)
-												{
-													if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
-													if (u.first.size() >= key.size() &&
-														__detail__::contains(u.first.c_str(), key.c_str()))
-														matches.push_back(u.first);
-												}
-												
-												io.write(matches.size());
-												for (auto& m: matches)
-													io.write(m);
-												
-												return true;
-											}
-											else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function " LUA_FIND_USERS_BY_LOGIN_FUNC " returned false");
-										}
-										else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function " LUA_FIND_USERS_BY_LOGIN_FUNC);
+										if (matches.size() >= MAX_USER_ENTRIES_AMOUNT) break;
+										if (u.first.size() >= key.size() &&
+											__detail__::contains(u.first.c_str(), key.c_str()))
+											matches.push_back(u.first);
 									}
-									else if (verbose) ::syslog(LOG_DEBUG, "[Lua] " LUA_FIND_USERS_BY_LOGIN_FUNC " is not a function");
+									
+									io.write(matches.size());
+									for (auto& m: matches)
+										io.write(m);
+									
+									return true;
 								}
-								else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
 							}
 							else return false;
 						}
@@ -1543,6 +1281,154 @@ namespace msg
 			io.write(response);
 			return false;
 		}
+		
+		
+		inline static bool check_lua(lua_State* lua, int r)
+		{
+			if (r != LUA_OK)
+			{
+				::syslog(LOG_ERR, "[Lua] reported an error: %s", lua_tostring(lua, -1));
+				return false;
+			}
+			return true;
+		}
+		
+		inline bool lua_request_permission(
+				const char* function_name, const char* login, const char* password, const char* display_name)
+		{
+			if (luaL_dofile(lua, CONFIG_FILE))
+			{
+				luaL_openlibs(lua);
+				lua_getglobal(lua, function_name);
+				if (lua_isfunction(lua, -1))
+				{
+					lua_createtable(lua, 0, 3);
+					
+					lua_pushstring(lua, login);
+					lua_setfield(lua, -2, "login");
+					
+					lua_pushstring(lua, password);
+					lua_setfield(lua, -2, "password");
+					
+					lua_pushstring(lua, display_name);
+					lua_setfield(lua, -2, "display_name");
+					if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
+					{
+						if (lua_toboolean(lua, -1)) return true;
+						else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function %s returned false", function_name);
+					}
+					else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function %s", function_name);
+				}
+				else if (verbose) ::syslog(LOG_DEBUG, "[Lua] %s is not a function", function_name);
+			}
+			else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
+			return false;
+		}
+		
+		inline bool lua_request_permission(
+				const char* function_name, decltype(users.end()) user, const char* dataname, const char* data)
+		{
+			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+			{
+				luaL_openlibs(lua);
+				lua_getglobal(lua, LUA_SET_PASSWORD_FUNC);
+				if (lua_isfunction(lua, -1))
+				{
+					lua_createtable(lua, 0, 4);
+					
+					lua_pushstring(lua, user->first.c_str());
+					lua_setfield(lua, -2, "login");
+					
+					lua_pushstring(lua, user->second.password.c_str());
+					lua_setfield(lua, -2, "password");
+					
+					lua_pushstring(lua, user->second.display_name.c_str());
+					lua_setfield(lua, -2, "display_name");
+					
+					lua_pushstring(lua, data);
+					lua_setfield(lua, -2, dataname);
+					
+					if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
+					{
+						if (lua_toboolean(lua, -1)) return true;
+						else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function %s returned false", function_name);
+					}
+					else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function %s", function_name);
+				}
+				else if (verbose) ::syslog(LOG_DEBUG, "[Lua] %s is not a function", function_name);
+			}
+			else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
+			return false;
+		}
+		
+		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user, const char* arg)
+		{
+			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+			{
+				luaL_openlibs(lua);
+				lua_getglobal(lua, LUA_SET_PASSWORD_FUNC);
+				if (lua_isfunction(lua, -1))
+				{
+					lua_createtable(lua, 0, 3);
+					
+					lua_pushstring(lua, user->first.c_str());
+					lua_setfield(lua, -2, "login");
+					
+					lua_pushstring(lua, user->second.password.c_str());
+					lua_setfield(lua, -2, "password");
+					
+					lua_pushstring(lua, user->second.display_name.c_str());
+					lua_setfield(lua, -2, "display_name");
+					
+					
+					lua_pushstring(lua, arg);
+					
+					
+					if (check_lua(lua, lua_pcall(lua, 2, 1, 0)))
+					{
+						if (lua_toboolean(lua, -1)) return true;
+						else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function %s returned false", function_name);
+					}
+					else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function %s", function_name);
+				}
+				else if (verbose) ::syslog(LOG_DEBUG, "[Lua] %s is not a function", function_name);
+			}
+			else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
+			return false;
+		}
+		
+		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user)
+		{
+			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
+			{
+				luaL_openlibs(lua);
+				lua_getglobal(lua, LUA_SET_PASSWORD_FUNC);
+				if (lua_isfunction(lua, -1))
+				{
+					lua_createtable(lua, 0, 3);
+					
+					lua_pushstring(lua, user->first.c_str());
+					lua_setfield(lua, -2, "login");
+					
+					lua_pushstring(lua, user->second.password.c_str());
+					lua_setfield(lua, -2, "password");
+					
+					lua_pushstring(lua, user->second.display_name.c_str());
+					lua_setfield(lua, -2, "display_name");
+					
+					if (check_lua(lua, lua_pcall(lua, 1, 1, 0)))
+					{
+						if (lua_toboolean(lua, -1)) return true;
+						else if (verbose) ::syslog(LOG_DEBUG, "[Lua] function %s returned false", function_name);
+					}
+					else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Unable to call function %s", function_name);
+				}
+				else if (verbose) ::syslog(LOG_DEBUG, "[Lua] %s is not a function", function_name);
+			}
+			else if (verbose) ::syslog(LOG_DEBUG, "[Lua] Failed doing file \"" CONFIG_FILE "\"");
+			return false;
+		}
+		
 		
 		inline static bool check_credentials(
 				HEADER& response, const std::string& login, std::string& password, server* serv, decltype(users.end())& user)
@@ -1659,11 +1545,13 @@ namespace msg
 			return true;
 		}
 		
+		
 		inline static bool client_processing(inet::inet_io& io, const inet::inet_address& address, inet::server* serv)
 		{
 			auto* this_ptr = static_cast<server*>(serv->extra);
 			return process_request(messenger_io(io), address, this_ptr);
 		}
+		
 		
 		inline static bool hash_passwd(char** salt_p, char** hash, char* passwd, __detail__::passwd_modes mode)
 		{
