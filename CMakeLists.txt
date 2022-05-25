@@ -3,8 +3,6 @@ project(privacy-protection-messenger)
 
 set(CMAKE_CXX_STANDARD 20)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lssl -lcrypto -lpthread -lsoter -lthemis -lmariadbcpp")
-
 if (DEFINED PACKAGE_VERSION)
     add_compile_definitions(VERSION="${PACKAGE_VERSION}")
 endif ()
@@ -21,5 +19,6 @@ if (DEFINED CFG_DIR)
     add_compile_definitions(CONFIG_DIR="${CFG_DIR}")
 endif ()
 
-
 add_executable(privacy-protection-messenger main.cpp)
+
+target_link_libraries(privacy-protection-messenger ssl crypto pthread soter themis mariadbcpp lua)
