@@ -1374,7 +1374,7 @@ namespace msg
 		inline bool lua_request_permission(
 				const char* function_name, const char* login, const char* password, const char* display_name)
 		{
-			if (luaL_dofile(lua, CONFIG_FILE))
+			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
 			{
 				luaL_openlibs(lua);
 				lua_getglobal(lua, function_name);
