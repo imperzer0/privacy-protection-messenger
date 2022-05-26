@@ -1010,6 +1010,7 @@ namespace msg
 									if (verbose) ::syslog(LOG_DEBUG, "Registered user \"%s\"", login.c_str());
 									response.err = HEADER::e_success;
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 							}
 							else
 							{
@@ -1017,6 +1018,10 @@ namespace msg
 								response.err = HEADER::e_user_already_exists;
 							}
 						}
+						else if (verbose)
+							::syslog(
+									LOG_DEBUG, "Strange! Display name was not read. User \"%s\", IP = %s:%hu",
+									login.c_str(), address.get_address(), address.get_port());
 						return io.write(response);
 					}
 					case HEADER::s_set_password:
@@ -1037,8 +1042,14 @@ namespace msg
 									::syslog(LOG_DEBUG, "User \"%s\" changed password.", login.c_str());
 									response.err = HEADER::e_success;
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						}
+						else if (verbose)
+							::syslog(
+									LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+									login.c_str(), address.get_address(), address.get_port());
 						return io.write(response);
 					}
 					case HEADER::s_set_display_name:
@@ -1059,8 +1070,14 @@ namespace msg
 										::syslog(LOG_DEBUG, R"(User "%s" changed display name to "%s".)", login.c_str(), display_name.c_str());
 									response.err = HEADER::e_success;
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						}
+						else if (verbose)
+							::syslog(
+									LOG_DEBUG, "Strange! Display name was not read. User \"%s\", IP = %s:%hu",
+									login.c_str(), address.get_address(), address.get_port());
 						return io.write(response);
 					}
 					case HEADER::s_get_display_name:
@@ -1078,8 +1095,14 @@ namespace msg
 									io.write(user->second.display_name);
 									if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" queried display name.", login.c_str());
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						}
+						else if (verbose)
+							::syslog(
+									LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+									login.c_str(), address.get_address(), address.get_port());
 						return true;
 					}
 					case HEADER::s_begin_session:
@@ -1096,7 +1119,9 @@ namespace msg
 								if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" started session.", login.c_str());
 								response.err = HEADER::e_success;
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return io.write(response);
 					}
 					case HEADER::s_end_session:
@@ -1109,6 +1134,7 @@ namespace msg
 							if (verbose) ::syslog(LOG_DEBUG, "User \"%s\" ended session.", login.c_str());
 							response.err = HEADER::e_success;
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return io.write(response);
 					}
 					case HEADER::s_get_pubkey:
@@ -1117,20 +1143,33 @@ namespace msg
 						if (check_credentials(response, login, password, serv, user))
 						{
 							std::string target;
-							read_data(io, header, target);
-							auto target_it = statuses.find(target);
-							if (target_it != statuses.end())
+							if (read_data(io, header, target))
 							{
-								if (serv->lua_request_permission(LUA_GET_PUBKEY_FUNC, user, target.c_str()))
+								auto target_it = statuses.find(target);
+								if (target_it != statuses.end())
 								{
-									response.err = HEADER::e_success;
-									io.write(response);
-									io.write(target_it->second.pubkey);
-									return true;
+									if (serv->lua_request_permission(LUA_GET_PUBKEY_FUNC, user, target.c_str()))
+									{
+										response.err = HEADER::e_success;
+										io.write(response);
+										io.write(target_it->second.pubkey);
+										if (verbose) ::syslog(LOG_DEBUG, R"(Gave "%s"'s pubkey to "%s".)", target.c_str(), login.c_str());
+										return true;
+									}
+									else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
+								}
+								else
+								{
+									if (verbose) ::syslog(LOG_DEBUG, "No target user status loaded \"%s\".", target.c_str());
+									response.err = HEADER::e_user_not_found;
 								}
 							}
-							response.err = HEADER::e_user_not_found;
+							else if (verbose)
+								::syslog(
+										LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+										login.c_str(), address.get_address(), address.get_port());
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return io.write(response);
 					}
 					case HEADER::s_send_message:
@@ -1152,11 +1191,22 @@ namespace msg
 											incoming.put_message(*message.destination, message);
 											response.err = HEADER::e_success;
 										}
+										else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 									}
-									else response.err = HEADER::e_user_not_found;
+									else
+									{
+										if (verbose) ::syslog(LOG_DEBUG, "No destination user \"%s\" status loaded.", message.destination->c_str());
+										response.err = HEADER::e_user_not_found;
+									}
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Session ended for user \"%s\".", login.c_str());
 							}
+							else if (verbose)
+								::syslog(
+										LOG_DEBUG, "Strange! Message was not read. User \"%s\", IP = %s:%hu",
+										login.c_str(), address.get_address(), address.get_port());
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return io.write(response);
 					}
 					case HEADER::s_query_incoming:
@@ -1175,9 +1225,15 @@ namespace msg
 									io.write(msg);
 									return true;
 								}
-								else response.err = HEADER::e_message_not_found;
+								else
+								{
+									if (verbose) ::syslog(LOG_DEBUG, "No incoming messages for \"%s\".", login.c_str());
+									response.err = HEADER::e_message_not_found;
+								}
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Session ended for user \"%s\".", login.c_str());
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return io.write(response);
 					}
 					case HEADER::s_check_online_status:
@@ -1199,10 +1255,20 @@ namespace msg
 										io.write(target_user->second.is_session_running);
 										return true;
 									}
+									else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 								}
-								else response.err = HEADER::e_user_not_found;
+								else
+								{
+									if (verbose) ::syslog(LOG_DEBUG, "");
+									response.err = HEADER::e_user_not_found;
+								}
 							}
+							else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						}
+						else if (verbose)
+							::syslog(
+									LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+									login.c_str(), address.get_address(), address.get_port());
 						return io.write(response);
 					}
 					case HEADER::s_find_users_by_display_name:
@@ -1233,9 +1299,15 @@ namespace msg
 									
 									return true;
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
 							}
+							else if (verbose)
+								::syslog(
+										LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+										login.c_str(), address.get_address(), address.get_port());
 							else return false;
 						}
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
 						return true;
 					}
 					case HEADER::s_find_users_by_login:
@@ -1263,17 +1335,23 @@ namespace msg
 									io.write(matches.size());
 									for (auto& m: matches)
 										io.write(m);
-									
-									return true;
 								}
+								else if (verbose) ::syslog(LOG_DEBUG, "Lua refused.");
+								return true;
 							}
-							else return false;
+							else if (verbose)
+								::syslog(
+										LOG_DEBUG, "Strange! Data was not read. User \"%s\", IP = %s:%hu",
+										login.c_str(), address.get_address(), address.get_port());
 						}
-						return true;
+						else if (verbose) ::syslog(LOG_DEBUG, "Invalid credentials for user \"%s\".", login.c_str());
+						return false;
 					}
 					default:
 					{
-						::syslog(LOG_DEBUG, "Received unknown signal = SIG(%d). Ignoring...", header.sig);
+						::syslog(
+								LOG_WARNING, "Received unknown signal = SIG(%d). IP = %s:%hu. Ignoring...",
+								header.sig, address.get_address(), address.get_port());
 						return io.write(response);
 					}
 				}
@@ -1287,7 +1365,7 @@ namespace msg
 		{
 			if (r != LUA_OK)
 			{
-				::syslog(LOG_ERR, "[Lua] reported an error: %s", lua_tostring(lua, -1));
+				if (verbose) ::syslog(LOG_ERR, "[Lua] reported an error: %s", lua_tostring(lua, -1));
 				return false;
 			}
 			return true;
