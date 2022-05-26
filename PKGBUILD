@@ -40,7 +40,7 @@ package()
 	install -Dm644 $pkgname.service "$pkgdir/etc/systemd/system/$pkgname.service"
 	mkdir -pm755 $pkgdir$_var_directory
 	mkdir -pm755 $pkgdir$_cfg_directory
-	install -Dm755 "config.lua" "$pkgdir$_cfg_directory/config.lua"
+	install -Dm644 "config.lua" "$pkgdir$_cfg_directory/config.lua"
 }
 
 notarch_package()
@@ -55,5 +55,5 @@ notarch_package()
 	mkdir -pm755 $pkgdir$_cfg_directory
 
 	cp -f "config.lua" "$pkgdir$_cfg_directory/config.lua"
-	chmod 755 "$pkgdir$_cfg_directory/config.lua"
+	chmod 644 "$pkgdir$_cfg_directory/config.lua"
 }
