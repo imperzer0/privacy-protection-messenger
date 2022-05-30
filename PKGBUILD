@@ -1,6 +1,6 @@
 pkgname="privacy-protection-messenger"
 pkgver=2.0
-pkgrel=2
+pkgrel=3
 pkgdesc="Secure messenger backend"
 author="imperzer0"
 url="https://github.com/$author/$pkgname"

@@ -967,8 +967,58 @@ namespace msg
 		static std::map<std::string, USER_STATUS> statuses;
 		static std::map<std::string, USER_DATA> users;
 		static MESSAGES incoming;
+		static std::recursive_mutex mutex;
 		std::unique_ptr<mariadb_user_manager> db_user_manager = nullptr;
 		lua_State* lua = luaL_newstate();
+		
+		class scope_indicator
+		{
+		public:
+			inline explicit scope_indicator(const std::string& scope) : scope(scope)
+			{
+				if (verbose)
+				{
+					mutex.lock();
+					++spaces_cnt;
+					std::string spaces;
+					for (int i = 0; i < spaces_cnt; ++i) spaces += " ";
+					::syslog(LOG_DEBUG, "%s{>>} Entered scope \"%s\"", spaces.c_str(), scope.c_str());
+					mutex.unlock();
+				}
+			}
+			
+			inline ~scope_indicator()
+			{
+				if (verbose)
+				{
+					mutex.lock();
+					std::string spaces;
+					for (int i = 0; i < spaces_cnt; ++i) spaces += " ";
+					::syslog(LOG_DEBUG, "%s{<<} Exited scope \"%s\"", spaces.c_str(), scope.c_str());
+					--spaces_cnt;
+					mutex.unlock();
+				}
+			}
+		
+		private:
+			std::string scope;
+			static int spaces_cnt;
+			static std::mutex mutex;
+		};
+		
+		template <typename Mutex>
+		class mutex_auto_lock
+		{
+		public:
+			mutex_auto_lock(Mutex* mutex) : mutex(mutex)
+			{ mutex->lock(); }
+			
+			~mutex_auto_lock()
+			{ mutex->unlock(); }
+		
+		private:
+			Mutex* mutex;
+		};
 		
 		
 		inline server(
@@ -983,6 +1033,7 @@ namespace msg
 		
 		inline static bool process_request(messenger_io io, const inet::inet_address& address, server* serv)
 		{
+			scope_indicator indicator(_STR(bool process_request(io, address, serv)));
 			HEADER header;
 			io.read(header);
 			
@@ -1360,7 +1411,7 @@ namespace msg
 			return false;
 		}
 		
-		
+		/// Analyze \b r lua call result
 		inline static bool check_lua(lua_State* lua, int r)
 		{
 			if (r != LUA_OK)
@@ -1371,6 +1422,7 @@ namespace msg
 			return true;
 		}
 		
+		/// Call lua function from config
 		inline bool lua_request_permission(
 				const char* function_name, const char* login, const char* password, const char* display_name)
 		{
@@ -1403,6 +1455,7 @@ namespace msg
 			return false;
 		}
 		
+		/// Call lua function from config
 		inline bool lua_request_permission(
 				const char* function_name, decltype(users.end()) user, const char* dataname, const char* data)
 		{
@@ -1439,6 +1492,7 @@ namespace msg
 			return false;
 		}
 		
+		/// Call lua function from config
 		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user, const char* arg)
 		{
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
@@ -1475,6 +1529,7 @@ namespace msg
 			return false;
 		}
 		
+		/// Call lua function from config
 		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user)
 		{
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
@@ -1507,13 +1562,13 @@ namespace msg
 			return false;
 		}
 		
-		
+		/// Check if user \b login with password \b password registered on this server
 		inline static bool check_credentials(
 				HEADER& response, const std::string& login, std::string& password, server* serv, decltype(users.end())& user)
 		{
 			user = users.find(login);
 			if (user == users.end())
-				if (int ret = serv->db_user_manager->load_user(login); ret)
+				if (int ret = serv->db_user_manager->load_user(login); ret) // lookup for him in database
 					return false;
 			
 			user = users.find(login);
@@ -1530,6 +1585,7 @@ namespace msg
 			return false;
 		}
 		
+		/// Check string limits
 		inline static bool assert_credentials(messenger_io& io, const HEADER& header, HEADER& response)
 		{
 			if (header.login_size > MAX_LOGIN)
@@ -1546,7 +1602,7 @@ namespace msg
 				return true;
 			}
 			
-			if (header.password_size < 8)
+			if (header.password_size < 8) // require at least 8 chars
 			{
 				if (verbose) ::syslog(LOG_ERR, "HEADER::password_size = %zu which is too short.", header.password_size);
 				response.err = HEADER::e_too_short_password;
@@ -1558,12 +1614,13 @@ namespace msg
 		
 		inline static bool compute_passwd_hash(std::string& password, std::string& salt)
 		{
+			mutex_auto_lock<decltype(mutex)> locker(&mutex); // lock entire function
+			
 			char* arr_salt = (salt.empty() ? nullptr : salt.data());
 			char* hash = nullptr;
 			if (verbose) ::syslog(LOG_DEBUG, "Hashing password to operate with it.");
 			if (hash_passwd(&arr_salt, &hash, password.data(), __detail__::PASSWD_HASH_TYPE))
 			{
-				password.clear();
 				password = hash;
 				salt = arr_salt;
 				return true;
@@ -1694,6 +1751,9 @@ namespace msg
 	std::map<std::string, server::USER_DATA> server::users;
 	std::map<std::string, server::USER_STATUS> server::statuses;
 	MESSAGES server::incoming;
+	std::recursive_mutex server::mutex;
+	int server::scope_indicator::spaces_cnt = 0;
+	std::mutex server::scope_indicator::mutex;
 	
 	namespace __detail__ __attribute__((visibility("hidden")))
 	{
