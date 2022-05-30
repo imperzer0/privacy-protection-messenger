@@ -1010,10 +1010,10 @@ namespace msg
 		class mutex_auto_lock
 		{
 		public:
-			mutex_auto_lock(Mutex* mutex) : mutex(mutex)
+			inline explicit mutex_auto_lock(Mutex* mutex) : mutex(mutex)
 			{ mutex->lock(); }
 			
-			~mutex_auto_lock()
+			inline ~mutex_auto_lock()
 			{ mutex->unlock(); }
 		
 		private:
@@ -1411,6 +1411,21 @@ namespace msg
 			return false;
 		}
 		
+		
+		class lua_scope_stack_cleaner
+		{
+		public:
+			inline explicit lua_scope_stack_cleaner(lua_State* lua) : lua(lua)
+			{ }
+			
+			inline ~lua_scope_stack_cleaner()
+			{ lua_settop(lua, 0); }
+		
+		private:
+			lua_State* lua;
+		};
+		
+		
 		/// Analyze \b r lua call result
 		inline static bool check_lua(lua_State* lua, int r)
 		{
@@ -1426,6 +1441,8 @@ namespace msg
 		inline bool lua_request_permission(
 				const char* function_name, const char* login, const char* password, const char* display_name)
 		{
+			lua_scope_stack_cleaner cleaner(lua);
+			
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
 			{
 				luaL_openlibs(lua);
@@ -1459,6 +1476,8 @@ namespace msg
 		inline bool lua_request_permission(
 				const char* function_name, decltype(users.end()) user, const char* dataname, const char* data)
 		{
+			lua_scope_stack_cleaner cleaner(lua);
+			
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
 			{
 				luaL_openlibs(lua);
@@ -1495,6 +1514,8 @@ namespace msg
 		/// Call lua function from config
 		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user, const char* arg)
 		{
+			lua_scope_stack_cleaner cleaner(lua);
+			
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
 			{
 				luaL_openlibs(lua);
@@ -1532,6 +1553,8 @@ namespace msg
 		/// Call lua function from config
 		inline bool lua_request_permission(const char* function_name, decltype(users.end()) user)
 		{
+			lua_scope_stack_cleaner cleaner(lua);
+			
 			if (check_lua(lua, luaL_dofile(lua, CONFIG_FILE)))
 			{
 				luaL_openlibs(lua);
