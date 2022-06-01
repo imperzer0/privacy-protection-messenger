@@ -367,14 +367,14 @@ namespace msg
 		}
 	};
 	
-	inline static std::pair<std::shared_ptr<std::vector<uint8_t>>, std::shared_ptr<std::vector<uint8_t>>> generate_cert()
+	inline static std::pair<std::vector<uint8_t>, std::vector<uint8_t>> generate_cert()
 	{
 		std::string error;
 		
 		auto pkey = inet::generate_pkey(error);
 		if (!pkey)
 		{
-			LOG << LOG_COLOR << "An error occurred while generating pkey: " << error << ENDENTLN;
+			ERR << "An error occurred while generating public key: " << error << ENDENTLN;
 			EVP_PKEY_free(pkey);
 			return {{ },
 					{ }};
@@ -383,7 +383,7 @@ namespace msg
 		auto cert = inet::generate_cert(error, pkey, COUNTRY, ORGANIZATION, CERTIFICATE_NAME);
 		if (!cert)
 		{
-			LOG << LOG_COLOR << "An error occurred while generating certificate: " << error << ENDENTLN;
+			ERR << "An error occurred while generating certificate: " << error << ENDENTLN;
 			EVP_PKEY_free(pkey);
 			X509_free(cert);
 			return {{ },
@@ -399,15 +399,12 @@ namespace msg
 		inline static client* create_client(const inet::inet_address& server_address)
 		{
 			auto certpair = generate_cert();
-			if (certpair.first->empty() || certpair.second->empty())
+			if (certpair.first.empty() || certpair.second.empty())
 				return nullptr;
 			
 			return new client(
 					server_address,
-					std::make_shared<inet::loader>(
-							inet::input_stream::mkstream(certpair.first),
-							inet::input_stream::mkstream(certpair.second)
-					)
+					{inet::input_stream::mkstream(certpair.first), inet::input_stream::mkstream(certpair.second)}
 			);
 		}
 		
@@ -719,7 +716,7 @@ namespace msg
 		}
 	
 	private:
-		inline explicit client(const inet::inet_address& server_address, std::shared_ptr<inet::loader> crt)
+		inline explicit client(const inet::inet_address& server_address, inet::loader&& crt)
 				: messenger_io(inet::inet_io()), inet::client(server_address, std::move(crt))
 		{
 			this->messenger_io::ssl = this->inet::client::ssl;
@@ -770,15 +767,12 @@ namespace msg
 				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password)
 		{
 			auto certpair = generate_cert();
-			if (certpair.first->empty() || certpair.second->empty())
+			if (certpair.first.empty() || certpair.second.empty())
 				return nullptr;
 			
 			return new server(
 					max_clients, address, db_login, db_password,
-					std::make_shared<inet::loader>(
-							inet::input_stream::mkstream(certpair.first),
-							inet::input_stream::mkstream(certpair.second)
-					)
+					{inet::input_stream::mkstream(certpair.first), inet::input_stream::mkstream(certpair.second)}
 			);
 		}
 		
@@ -1022,8 +1016,8 @@ namespace msg
 		
 		
 		inline server(
-				int max_clients, const inet::inet_address& address, const std::string& db_login, const std::string& db_password,
-				std::shared_ptr<inet::loader> crt)
+				int max_clients, const inet::inet_address& address,
+				const std::string& db_login, const std::string& db_password, inet::loader&& crt)
 				: inet::server(max_clients, address, client_processing, this, std::move(crt)),
 				  db_user_manager(std::make_unique<mariadb_user_manager>(db_login, db_password, USERS_TABLE_NAME))
 		{ }
